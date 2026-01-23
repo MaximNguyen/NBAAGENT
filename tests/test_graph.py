@@ -7,8 +7,9 @@ These tests PROVE the success criteria:
 4. Analysis node receives outputs from both parallel nodes
 5. Sequential dependency is enforced
 
-Note: Lines Agent is now real (Phase 2). Tests use game_date=None to trigger
-filter path (no API calls), verifying graph structure without external deps.
+Note: Lines Agent (Phase 2) and Stats Agent (Phase 3) are now real.
+Tests use game_date=None to trigger filter path (no API calls), verifying
+graph structure without external dependencies.
 """
 
 import time

@@ -1,12 +1,13 @@
 """Node functions for the betting analysis multi-agent graph.
 
-Lines Agent is fully implemented. Other agents are stubs that will be
-replaced with real implementations in later phases.
+Lines Agent and Stats Agent are fully implemented. Other agents are stubs
+that will be replaced with real implementations in later phases.
 """
 
 from datetime import datetime, timedelta
 
 from nba_betting_agent.agents.lines_agent.agent import lines_agent_impl
+from nba_betting_agent.agents.stats_agent.agent import stats_agent_impl
 from nba_betting_agent.graph.state import BettingAnalysisState
 
 
@@ -66,10 +67,11 @@ def lines_agent(state: BettingAnalysisState) -> dict:
 def stats_agent(state: BettingAnalysisState) -> dict:
     """Stats Agent: Gather team and player statistics.
 
-    Will be implemented in Phase 3 to:
-    - Scrape team stats from Basketball Reference
-    - Get player stats and injury reports
-    - Return structured performance data
+    Implemented in Phase 3 to:
+    - Fetch team stats from nba_api (game logs, advanced metrics)
+    - Get injury reports from ESPN API
+    - Cache data aggressively (24h stats, 1h injuries)
+    - Gracefully degrade with stale cache on API failure
 
     Filters out historical games (date < today) and far-future games (date > today + 7 days).
 
@@ -79,7 +81,7 @@ def stats_agent(state: BettingAnalysisState) -> dict:
     Returns:
         Partial state update with team_stats, player_stats, and injuries
     """
-    # Check if game is upcoming
+    # Check if game is upcoming - skip expensive API calls for filtered games
     if not is_game_upcoming(state.get("game_date")):
         return {
             "team_stats": {},
@@ -88,12 +90,8 @@ def stats_agent(state: BettingAnalysisState) -> dict:
             "errors": ["Stats Agent: game filtered (historical or too far in future)"],
         }
 
-    return {
-        "team_stats": {"stub": "data"},
-        "player_stats": {"stub": "data"},
-        "injuries": [],
-        "errors": ["Stats Agent: stub implementation"],
-    }
+    # Call real implementation
+    return stats_agent_impl(state)
 
 
 def analysis_agent(state: BettingAnalysisState) -> dict:
