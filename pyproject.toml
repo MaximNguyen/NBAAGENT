@@ -23,7 +23,7 @@ dev = [
 ]
 
 [project.scripts]
-nba-betting = "nba_betting_agent.cli:app"
+nba-ev = "nba_betting_agent.cli.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

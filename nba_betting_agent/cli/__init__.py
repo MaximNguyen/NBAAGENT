@@ -3,6 +3,6 @@
 Provides natural language interface for betting analysis.
 """
 
-from nba_betting_agent.cli.main import app
+from nba_betting_agent.cli.main import cli
 
-__all__ = ["app"]
+__all__ = ["cli"]
