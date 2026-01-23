@@ -5,3 +5,32 @@ This module provides:
 - Pydantic models for team stats and injury reports
 - NBA data fetching with retry and circuit breaker patterns
 """
+
+from nba_betting_agent.agents.stats_agent.cache import CacheEntry, StatsCache
+from nba_betting_agent.agents.stats_agent.models import (
+    HomeAwayRecord,
+    HomeAwayStats,
+    InjuryReport,
+    Last10Stats,
+    TeamAdvancedMetrics,
+    TeamBasicStats,
+    TeamRecord,
+    TeamStats,
+    TeamStatsCollection,
+)
+
+__all__ = [
+    # Cache
+    "StatsCache",
+    "CacheEntry",
+    # Models
+    "TeamRecord",
+    "TeamBasicStats",
+    "TeamAdvancedMetrics",
+    "HomeAwayRecord",
+    "HomeAwayStats",
+    "Last10Stats",
+    "TeamStats",
+    "InjuryReport",
+    "TeamStatsCollection",
+]
