@@ -1,11 +1,12 @@
 """Node functions for the betting analysis multi-agent graph.
 
-These are stub implementations that will be replaced with real implementations
-in later phases. Each node represents an agent in the workflow.
+Lines Agent is fully implemented. Other agents are stubs that will be
+replaced with real implementations in later phases.
 """
 
 from datetime import datetime, timedelta
 
+from nba_betting_agent.agents.lines_agent.agent import lines_agent_impl
 from nba_betting_agent.graph.state import BettingAnalysisState
 
 
@@ -35,12 +36,12 @@ def is_game_upcoming(game_date: str | None) -> bool:
 
 
 def lines_agent(state: BettingAnalysisState) -> dict:
-    """Lines Agent: Scrape and analyze betting lines from sportsbooks.
+    """Lines Agent: Fetch and analyze betting lines from sportsbooks.
 
-    Will be implemented in Phase 2 to:
-    - Scrape odds from 5 sportsbooks (DraftKings, FanDuel, BetMGM, Caesars, BetRivers)
+    Implemented in Phase 2 to:
+    - Fetch odds from The Odds API (primary source)
     - Identify line discrepancies across books
-    - Return structured odds data
+    - Use circuit breaker pattern for resilience
 
     Filters out historical games (date < today) and far-future games (date > today + 7 days).
 
@@ -50,7 +51,7 @@ def lines_agent(state: BettingAnalysisState) -> dict:
     Returns:
         Partial state update with odds_data and line_discrepancies
     """
-    # Check if game is upcoming
+    # Check if game is upcoming - skip expensive API call for filtered games
     if not is_game_upcoming(state.get("game_date")):
         return {
             "odds_data": [],
@@ -58,11 +59,8 @@ def lines_agent(state: BettingAnalysisState) -> dict:
             "errors": ["Lines Agent: game filtered (historical or too far in future)"],
         }
 
-    return {
-        "odds_data": [{"book": "stub", "line": "stub"}],
-        "line_discrepancies": [],
-        "errors": ["Lines Agent: stub implementation"],
-    }
+    # Call real implementation
+    return lines_agent_impl(state)
 
 
 def stats_agent(state: BettingAnalysisState) -> dict:
