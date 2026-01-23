@@ -19,6 +19,7 @@ dependencies = [
     "circuitbreaker>=2.0.0",
     "nba_api>=1.4.0",
     "diskcache>=5.6.0",
+    "scikit-learn>=1.4.0",
 ]
 
 [project.optional-dependencies]
