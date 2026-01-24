@@ -105,6 +105,219 @@ class TestQueryParser:
 
         assert parsed.game_date is None
 
+    # Tests for min_ev parsing
+    def test_parse_min_ev_over_pattern(self):
+        """Test 'over X% edge' pattern extraction."""
+        query = "find bets over 5% edge"
+        parsed = parse_query(query)
+
+        assert parsed.min_ev == 5.0
+
+    def test_parse_min_ev_above_pattern(self):
+        """Test 'above X% ev' pattern extraction."""
+        query = "show me above 10% ev"
+        parsed = parse_query(query)
+
+        assert parsed.min_ev == 10.0
+
+    def test_parse_min_ev_minimum_pattern(self):
+        """Test 'X% edge minimum' pattern extraction."""
+        query = "5% edge minimum"
+        parsed = parse_query(query)
+
+        assert parsed.min_ev == 5.0
+
+    def test_parse_min_ev_decimal(self):
+        """Test decimal EV values like 2.5%."""
+        query = "over 2.5% edge tonight"
+        parsed = parse_query(query)
+
+        assert parsed.min_ev == 2.5
+
+    def test_parse_min_ev_no_percent(self):
+        """Test EV without % symbol (assumes percentage)."""
+        query = "over 5 edge"
+        parsed = parse_query(query)
+
+        assert parsed.min_ev == 5.0
+
+    def test_parse_min_ev_not_present(self):
+        """Test that queries without EV threshold return None."""
+        query = "find bets tonight"
+        parsed = parse_query(query)
+
+        assert parsed.min_ev is None
+
+    def test_parse_min_ev_more_than(self):
+        """Test 'more than X% edge' pattern."""
+        query = "more than 3% edge for lakers"
+        parsed = parse_query(query)
+
+        assert parsed.min_ev == 3.0
+
+    # Tests for confidence parsing
+    def test_parse_confidence_high(self):
+        """Test 'high confidence' extraction."""
+        query = "high confidence bets"
+        parsed = parse_query(query)
+
+        assert parsed.confidence == "high"
+
+    def test_parse_confidence_medium(self):
+        """Test 'medium confidence' extraction."""
+        query = "medium confidence opportunities"
+        parsed = parse_query(query)
+
+        assert parsed.confidence == "medium"
+
+    def test_parse_confidence_low(self):
+        """Test 'low confidence only' extraction."""
+        query = "low confidence only"
+        parsed = parse_query(query)
+
+        assert parsed.confidence == "low"
+
+    def test_parse_confidence_colon(self):
+        """Test 'confidence: high' pattern."""
+        query = "find bets confidence: high"
+        parsed = parse_query(query)
+
+        assert parsed.confidence == "high"
+
+    def test_parse_confidence_not_present(self):
+        """Test that queries without confidence return None."""
+        query = "find bets"
+        parsed = parse_query(query)
+
+        assert parsed.confidence is None
+
+    def test_parse_confidence_confident_bets(self):
+        """Test 'confident bets' implies high confidence."""
+        query = "show me confident bets"
+        parsed = parse_query(query)
+
+        assert parsed.confidence == "high"
+
+    def test_parse_confidence_case_insensitive(self):
+        """Test confidence parsing is case insensitive."""
+        query = "HIGH CONFIDENCE bets"
+        parsed = parse_query(query)
+
+        assert parsed.confidence == "high"
+
+    # Tests for limit parsing
+    def test_parse_limit_top(self):
+        """Test 'top X bets' pattern extraction."""
+        query = "top 10 bets"
+        parsed = parse_query(query)
+
+        assert parsed.limit == 10
+
+    def test_parse_limit_best(self):
+        """Test 'X best opportunities' pattern extraction."""
+        query = "5 best opportunities"
+        parsed = parse_query(query)
+
+        assert parsed.limit == 5
+
+    def test_parse_limit_show(self):
+        """Test 'show X' pattern extraction."""
+        query = "show 20"
+        parsed = parse_query(query)
+
+        assert parsed.limit == 20
+
+    def test_parse_limit_not_present(self):
+        """Test that queries without limit return None."""
+        query = "all bets"
+        parsed = parse_query(query)
+
+        assert parsed.limit is None
+
+    def test_parse_limit_first(self):
+        """Test 'first X' pattern extraction."""
+        query = "first 3 opportunities"
+        parsed = parse_query(query)
+
+        assert parsed.limit == 3
+
+    def test_parse_limit_top_picks(self):
+        """Test 'top X picks' pattern extraction."""
+        query = "top 7 picks for today"
+        parsed = parse_query(query)
+
+        assert parsed.limit == 7
+
+    # Tests for combined parsing
+    def test_parse_combined_all(self):
+        """Test combined extraction of multiple filter parameters."""
+        query = "high confidence bets over 5% edge for lakers tonight"
+        parsed = parse_query(query)
+
+        assert parsed.confidence == "high"
+        assert parsed.min_ev == 5.0
+        assert "LAL" in parsed.teams
+        assert parsed.game_date == datetime.now().date().isoformat()
+
+    def test_parse_combined_ev_and_limit(self):
+        """Test EV and limit combination."""
+        query = "top 5 opportunities over 3% edge"
+        parsed = parse_query(query)
+
+        assert parsed.limit == 5
+        assert parsed.min_ev == 3.0
+
+    def test_parse_combined_confidence_and_limit(self):
+        """Test confidence and limit combination."""
+        query = "top 10 high confidence picks"
+        parsed = parse_query(query)
+
+        assert parsed.limit == 10
+        assert parsed.confidence == "high"
+
+    def test_parse_existing_still_works(self):
+        """Verify existing functionality (teams, dates, bet_type) unchanged."""
+        # Test existing date parsing
+        query1 = "find games tonight"
+        parsed1 = parse_query(query1)
+        assert parsed1.game_date == datetime.now().date().isoformat()
+
+        # Test existing team parsing
+        query2 = "celtics vs lakers"
+        parsed2 = parse_query(query2)
+        assert "BOS" in parsed2.teams
+        assert "LAL" in parsed2.teams
+
+        # Test existing bet type parsing
+        query3 = "moneyline bets"
+        parsed3 = parse_query(query3)
+        assert parsed3.bet_type == "moneyline"
+
+    # Edge cases
+    def test_parse_empty_query(self):
+        """Test empty query returns all fields as None."""
+        query = ""
+        parsed = parse_query(query)
+
+        assert parsed.game_date is None
+        assert parsed.teams is None
+        assert parsed.bet_type is None
+        assert parsed.min_ev is None
+        assert parsed.confidence is None
+        assert parsed.limit is None
+
+    def test_parse_gibberish(self):
+        """Test gibberish query returns all fields as None."""
+        query = "asdfgh qwerty zxcvb"
+        parsed = parse_query(query)
+
+        assert parsed.game_date is None
+        assert parsed.teams is None
+        assert parsed.bet_type is None
+        assert parsed.min_ev is None
+        assert parsed.confidence is None
+        assert parsed.limit is None
+
 
 class TestCLI:
     """Test CLI commands and integration."""

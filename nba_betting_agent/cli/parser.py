@@ -288,11 +288,13 @@ def _parse_min_ev(query: str) -> float | None:
     Returns:
         Float EV percentage or None
     """
-    # Pattern 1: over/above/more than/> X% edge/ev
+    # Pattern matches: keyword + number + optional% + ev/edge
     patterns = [
-        r'(?:over|above|more than|>\s*)(\d+(?:\.\d+)?)\s*%?\s*(?:ev|edge)',
+        r'(?:over|above)\s+(\d+(?:\.\d+)?)\s*%?\s*(?:ev|edge)',
+        r'more\s+than\s+(\d+(?:\.\d+)?)\s*%?\s*(?:ev|edge)',
+        r'>\s*(\d+(?:\.\d+)?)\s*%?\s*(?:ev|edge)',
         r'(\d+(?:\.\d+)?)\s*%\s*(?:ev|edge)\s*(?:or higher|minimum|min)',
-        r'(?:ev|edge)\s*(?:of|at|above|over|>\s*)(\d+(?:\.\d+)?)\s*%?',
+        r'(?:ev|edge)\s*(?:of|at|above|over)\s+(\d+(?:\.\d+)?)\s*%?',
     ]
 
     for pattern in patterns:
