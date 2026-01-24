@@ -496,5 +496,6 @@ def analysis_agent_impl(state: dict) -> dict:
     return {
         "estimated_probabilities": result.estimated_probabilities,
         "expected_values": result.expected_values,
+        "opportunities": result.opportunities,  # NEW: typed objects for formatters
         "errors": result.errors,
     }
