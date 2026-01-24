@@ -7,7 +7,7 @@ These tests PROVE the success criteria:
 4. Analysis node receives outputs from both parallel nodes
 5. Sequential dependency is enforced
 
-Note: Lines Agent (Phase 2) and Stats Agent (Phase 3) are now real.
+Note: Lines Agent (Phase 2), Stats Agent (Phase 3), and Analysis Agent (Phase 4) are now real.
 Tests use game_date=None to trigger filter path (no API calls), verifying
 graph structure without external dependencies.
 """
@@ -116,12 +116,11 @@ def test_analysis_receives_parallel_outputs():
     This PROVES the parallel join works correctly. Analysis should only
     execute after both Lines and Stats complete.
 
-    Note: With real Lines Agent (Phase 2), game_date=None triggers filter path
-    (returns empty odds_data with filter error). Stats Agent still returns stub.
-    The key test is that Analysis runs AFTER both complete - which is proven
-    by the Analysis error message existing (it must wait for inputs).
+    Note: With real Analysis Agent (Phase 4), it detects empty odds_data from
+    Lines Agent (filtered) and returns appropriate error. Stats Agent also filters.
+    The key test is that Analysis runs AFTER both complete.
 
-    Expected: Analysis error message shows it processed both node outputs
+    Expected: Analysis error message shows it detected no odds data
     """
     initial_state: BettingAnalysisState = {
         "query": "test parallel join",
@@ -156,9 +155,8 @@ def test_analysis_receives_parallel_outputs():
     assert len(analysis_errors) == 1, "Analysis agent should have run once"
     analysis_msg = analysis_errors[0]
 
-    # Analysis runs after both nodes - both filtered so empty data
-    assert "odds=False" in analysis_msg, "Analysis should see empty odds_data (filtered)"
-    assert "stats=False" in analysis_msg, "Analysis should see empty team_stats (filtered)"
+    # Analysis detects no odds data (from filtered Lines Agent)
+    assert "no odds data" in analysis_msg.lower(), "Analysis should detect empty odds_data"
 
     print(f"Analysis confirmed parallel join: {analysis_msg}")
 
@@ -170,8 +168,8 @@ def test_sequential_dependency():
     1. Analysis waits for both Lines and Stats (parallel join)
     2. Communication waits for Analysis (sequential)
 
-    Note: With real Lines Agent (Phase 2), game_date=None triggers filter path.
-    Lines Agent returns empty odds_data, Stats Agent returns stub data.
+    Note: With real agents (Phase 2-4), game_date=None triggers filter path.
+    Lines and Stats return empty data, Analysis processes that.
     The key test is that all 4 agents execute in order.
 
     Expected: Final state has all outputs in correct order
@@ -203,8 +201,9 @@ def test_sequential_dependency():
     assert stats_ran, "Stats agent must have run (check errors)"
 
     # 2. Analysis must have completed (depends on Lines + Stats)
-    assert result["estimated_probabilities"], "Analysis agent output missing"
-    assert result["expected_values"], "Analysis agent output missing"
+    # Analysis returns empty dicts when no odds data
+    assert "estimated_probabilities" in result, "Analysis agent output missing"
+    assert "expected_values" in result, "Analysis agent output missing"
 
     # 3. Communication must have completed (depends on Analysis)
     assert result["recommendation"], "Communication agent output missing"
