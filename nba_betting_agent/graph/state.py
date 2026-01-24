@@ -17,6 +17,7 @@ class BettingAnalysisState(TypedDict):
         query: Natural language input from CLI
         game_date: Parsed date like "tonight", "2026-01-24", or None
         teams: Parsed team names like ["celtics", "lakers"]
+        filter_params: Filter criteria from parser (min_ev, confidence, limit)
 
     Lines Agent outputs:
         odds_data: Scraped odds from sportsbooks
@@ -44,6 +45,7 @@ class BettingAnalysisState(TypedDict):
     query: str
     game_date: str | None
     teams: list[str]
+    filter_params: dict
 
     # Lines Agent outputs
     odds_data: list[dict]
