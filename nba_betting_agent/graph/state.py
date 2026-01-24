@@ -7,6 +7,7 @@ import operator
 from typing import Annotated, TypedDict
 
 from langgraph.graph.message import add_messages
+from nba_betting_agent.agents.analysis_agent.agent import BettingOpportunity
 
 
 class BettingAnalysisState(TypedDict):
@@ -28,7 +29,8 @@ class BettingAnalysisState(TypedDict):
 
     Analysis Agent outputs:
         estimated_probabilities: Probability estimates per outcome
-        expected_values: EV calculations for each bet
+        expected_values: EV calculations for each bet (dict form)
+        opportunities: Typed BettingOpportunity objects for display
 
     Communication Agent outputs:
         recommendation: Formatted output for user
@@ -55,6 +57,7 @@ class BettingAnalysisState(TypedDict):
     # Analysis Agent outputs
     estimated_probabilities: dict
     expected_values: list[dict]
+    opportunities: list[BettingOpportunity]  # Typed objects for formatters
 
     # Communication Agent outputs
     recommendation: str
