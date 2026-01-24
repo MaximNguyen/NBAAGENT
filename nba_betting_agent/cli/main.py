@@ -41,6 +41,14 @@ def analyze(
     # Parse natural language query
     parsed = parse_query(query)
 
+    # Build filter_params from parsed query and CLI options
+    # CLI option min_ev takes precedence over parsed natural language
+    filter_params = {}
+    filter_params["min_ev"] = min_ev if min_ev > 0 else parsed.min_ev
+    filter_params["confidence"] = parsed.confidence
+    filter_params["limit"] = parsed.limit
+    # Note: team filter already applied via state.teams, market not yet supported
+
     if verbose:
         # Display parsed query details
         console.print(Panel.fit(
@@ -48,7 +56,9 @@ def analyze(
             f"[bold cyan]Date:[/bold cyan] {parsed.game_date or 'Any'}\n"
             f"[bold cyan]Teams:[/bold cyan] {', '.join(parsed.teams) if parsed.teams else 'All'}\n"
             f"[bold cyan]Bet Type:[/bold cyan] {parsed.bet_type or 'All'}\n"
-            f"[bold cyan]Min EV:[/bold cyan] {min_ev * 100:.1f}%",
+            f"[bold cyan]Min EV:[/bold cyan] {filter_params.get('min_ev', 0) * 100:.1f}%\n"
+            f"[bold cyan]Confidence:[/bold cyan] {filter_params.get('confidence') or 'Any'}\n"
+            f"[bold cyan]Limit:[/bold cyan] {filter_params.get('limit') or 'All'}",
             title="Parsed Query",
             border_style="cyan",
         ))
@@ -60,6 +70,7 @@ def analyze(
             "query": query,
             "game_date": parsed.game_date,
             "teams": parsed.teams or [],
+            "filter_params": filter_params,
             "errors": [],
             "messages": [],
             "odds_data": [],
@@ -69,6 +80,7 @@ def analyze(
             "injuries": [],
             "estimated_probabilities": {},
             "expected_values": [],
+            "opportunities": [],
             "recommendation": "",
         })
 
@@ -96,12 +108,9 @@ def _display_results(result: dict, verbose: bool):
     """
     recommendation = result.get("recommendation", "No recommendation available")
 
-    # Main recommendation panel
-    console.print(Panel.fit(
-        recommendation,
-        title="Analysis Result",
-        border_style="green" if "+ev" in recommendation.lower() else "yellow",
-    ))
+    # recommendation is now Rich-formatted from communication_agent
+    # Print directly without wrapping in Panel
+    console.print(recommendation)
 
     # Verbose details
     if verbose:
@@ -128,12 +137,14 @@ def _display_results(result: dict, verbose: bool):
         # Data summary
         odds_count = len(result.get("odds_data", []))
         ev_count = len(result.get("expected_values", []))
+        opps_count = len(result.get("opportunities", []))
 
         summary = Table(title="Data Summary", show_header=False)
         summary.add_column("Metric", style="bold")
         summary.add_column("Value")
 
         summary.add_row("Odds Sources", str(odds_count))
+        summary.add_row("Opportunities Found", str(opps_count))
         summary.add_row("Expected Values", str(ev_count))
         summary.add_row("Line Discrepancies", str(len(result.get("line_discrepancies", []))))
 
