@@ -1,13 +1,14 @@
 """Node functions for the betting analysis multi-agent graph.
 
-Lines Agent and Stats Agent are fully implemented. Other agents are stubs
-that will be replaced with real implementations in later phases.
+Lines Agent, Stats Agent, and Analysis Agent are fully implemented.
+Communication Agent is a stub for Phase 5.
 """
 
 from datetime import datetime, timedelta
 
 from nba_betting_agent.agents.lines_agent.agent import lines_agent_impl
 from nba_betting_agent.agents.stats_agent.agent import stats_agent_impl
+from nba_betting_agent.agents.analysis_agent.agent import analysis_agent_impl
 from nba_betting_agent.graph.state import BettingAnalysisState
 
 
@@ -97,29 +98,34 @@ def stats_agent(state: BettingAnalysisState) -> dict:
 def analysis_agent(state: BettingAnalysisState) -> dict:
     """Analysis Agent: Calculate probabilities and expected values.
 
-    Will be implemented in Phase 4 to:
-    - Use external projections as baseline (FiveThirtyEight, etc.)
-    - Apply AI-driven adjustments
-    - Calculate expected values for each betting opportunity
-    - Filter for positive EV bets
+    Implemented in Phase 4 to:
+    - Remove vig from odds to calculate fair probabilities
+    - Generate calibrated probability estimates
+    - Calculate expected value for each betting opportunity
+    - Detect sharp book edges and reverse line movement
+    - Optionally use LLM for matchup analysis
 
     Args:
-        state: Current workflow state with odds_data, team_stats, player_stats
+        state: Current workflow state with odds_data, team_stats, injuries
 
     Returns:
         Partial state update with estimated_probabilities and expected_values
     """
-    # Verify parallel nodes completed (both odds_data and team_stats should exist)
+    # Verify we have data from parallel agents
     has_odds = bool(state.get("odds_data"))
     has_stats = bool(state.get("team_stats"))
 
-    return {
-        "estimated_probabilities": {"stub": 0.5},
-        "expected_values": [{"bet": "stub", "ev": 0.0}],
-        "errors": [
-            f"Analysis Agent: stub implementation (received odds={has_odds}, stats={has_stats})"
-        ],
-    }
+    if not has_odds:
+        return {
+            "estimated_probabilities": {},
+            "expected_values": [],
+            "errors": [
+                "Analysis Agent: no odds data available (Lines Agent may have failed)"
+            ],
+        }
+
+    # Call real implementation
+    return analysis_agent_impl(state)
 
 
 def communication_agent(state: BettingAnalysisState) -> dict:
