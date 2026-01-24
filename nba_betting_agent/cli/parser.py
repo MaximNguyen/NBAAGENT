@@ -94,12 +94,18 @@ class ParsedQuery:
         game_date: Parsed date in ISO format (YYYY-MM-DD) or None
         teams: List of team abbreviations (e.g., ["BOS", "LAL"])
         bet_type: Type of bet (moneyline, spread, props, etc.)
+        min_ev: Minimum EV percentage threshold (e.g., 5.0 for 5%)
+        confidence: Confidence level filter ("high", "medium", "low")
+        limit: Maximum number of results to show
     """
 
     original: str
     game_date: str | None = None
     teams: list[str] | None = None
     bet_type: str | None = None
+    min_ev: float | None = None
+    confidence: str | None = None
+    limit: int | None = None
 
 
 def parse_query(query: str) -> ParsedQuery:
@@ -109,7 +115,7 @@ def parse_query(query: str) -> ParsedQuery:
         query: Natural language query string
 
     Returns:
-        ParsedQuery with extracted date, teams, and bet type
+        ParsedQuery with extracted date, teams, bet type, and filter parameters
 
     Examples:
         >>> parse_query("find +ev games tonight")
@@ -117,6 +123,9 @@ def parse_query(query: str) -> ParsedQuery:
 
         >>> parse_query("find best bets for celtics vs lakers")
         ParsedQuery(original="...", game_date=None, teams=["BOS", "LAL"], bet_type=None)
+
+        >>> parse_query("high confidence bets over 5% edge")
+        ParsedQuery(original="...", confidence="high", min_ev=5.0, ...)
     """
     query_lower = query.lower()
 
@@ -129,11 +138,19 @@ def parse_query(query: str) -> ParsedQuery:
     # Parse bet type
     bet_type = _parse_bet_type(query_lower)
 
+    # Parse filter parameters
+    min_ev = _parse_min_ev(query_lower)
+    confidence = _parse_confidence(query_lower)
+    limit = _parse_limit(query_lower)
+
     return ParsedQuery(
         original=query,
         game_date=game_date,
         teams=teams,
         bet_type=bet_type,
+        min_ev=min_ev,
+        confidence=confidence,
+        limit=limit,
     )
 
 
@@ -253,5 +270,92 @@ def _parse_bet_type(query: str) -> str | None:
 
     if "prop" in query_lower:
         return "props"
+
+    return None
+
+
+def _parse_min_ev(query: str) -> float | None:
+    """Extract minimum EV threshold from query.
+
+    Handles patterns like:
+    - "over 5% edge" -> 5.0
+    - "above 10% ev" -> 10.0
+    - "more than 2.5% edge" -> 2.5
+    - "> 5% ev" -> 5.0
+    - "5% edge minimum" -> 5.0
+    - "5 edge" (assumes % if context is EV) -> 5.0
+
+    Returns:
+        Float EV percentage or None
+    """
+    # Pattern 1: over/above/more than/> X% edge/ev
+    patterns = [
+        r'(?:over|above|more than|>\s*)(\d+(?:\.\d+)?)\s*%?\s*(?:ev|edge)',
+        r'(\d+(?:\.\d+)?)\s*%\s*(?:ev|edge)\s*(?:or higher|minimum|min)',
+        r'(?:ev|edge)\s*(?:of|at|above|over|>\s*)(\d+(?:\.\d+)?)\s*%?',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, query, re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+
+    return None
+
+
+def _parse_confidence(query: str) -> str | None:
+    """Extract confidence level filter from query.
+
+    Handles patterns like:
+    - "high confidence bets" -> "high"
+    - "medium confidence" -> "medium"
+    - "low confidence only" -> "low"
+    - "confidence: high" -> "high"
+    - "confident bets" -> "high"
+
+    Returns:
+        Lowercase confidence level string ("high", "medium", "low") or None
+    """
+    # Direct pattern: (high|medium|low) confidence
+    match = re.search(r'\b(high|medium|low)\s*confidence\b', query, re.IGNORECASE)
+    if match:
+        return match.group(1).lower()
+
+    # Colon pattern: confidence: (high|medium|low)
+    match = re.search(r'confidence\s*:\s*(high|medium|low)\b', query, re.IGNORECASE)
+    if match:
+        return match.group(1).lower()
+
+    # "confident bets" implies high confidence
+    if re.search(r'\bconfident\s+bets?\b', query, re.IGNORECASE):
+        return "high"
+
+    return None
+
+
+def _parse_limit(query: str) -> int | None:
+    """Extract result limit from query.
+
+    Handles patterns like:
+    - "top 10 bets" -> 10
+    - "5 best opportunities" -> 5
+    - "show 20" -> 20
+    - "first 3" -> 3
+
+    Returns:
+        Integer limit or None
+    """
+    # Pattern: X best/top opportunities/bets
+    patterns = [
+        r'\b(?:top|best)\s+(\d+)\s+(?:bets?|opportunities|picks?)\b',
+        r'\b(\d+)\s+(?:best|top)\s+(?:bets?|opportunities|picks?)\b',
+        r'^\s*show\s+(\d+)\b',
+        r'\bfirst\s+(\d+)\b',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, query, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
 
     return None
