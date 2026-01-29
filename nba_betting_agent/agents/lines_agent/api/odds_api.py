@@ -4,8 +4,8 @@ This module provides an async client for The Odds API (https://the-odds-api.com)
 with retry logic for transient errors and credit tracking.
 """
 
-import logging
 import os
+import time
 
 import httpx
 from dotenv import load_dotenv
@@ -17,8 +17,9 @@ from tenacity import (
 )
 
 from nba_betting_agent.agents.lines_agent.models import GameOdds
+from nba_betting_agent.monitoring import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger()
 
 
 class OddsAPIClient:
@@ -85,12 +86,16 @@ class OddsAPIClient:
             httpx.TimeoutException: If request times out after 3 retry attempts.
             pydantic.ValidationError: If response data fails validation.
         """
+        start_time = time.perf_counter()
+
         params = {
             "apiKey": self.api_key,
             "regions": "us",
             "markets": markets,
             "oddsFormat": odds_format,
         }
+
+        log.info("odds_api_request_started", markets=markets)
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
@@ -109,9 +114,10 @@ class OddsAPIClient:
 
         # Log warning if credits are low
         if self.remaining_credits is not None and self.remaining_credits < 50:
-            logger.warning(
-                "Low API credits remaining: %d. Consider reducing request frequency.",
-                self.remaining_credits,
+            log.warning(
+                "low_api_credits",
+                remaining=self.remaining_credits,
+                message="Consider reducing request frequency",
             )
 
         # Parse and validate response
@@ -120,5 +126,14 @@ class OddsAPIClient:
         for game_data in data:
             game = GameOdds.model_validate(game_data)
             games.append(game)
+
+        duration_ms = int((time.perf_counter() - start_time) * 1000)
+        log.info(
+            "odds_api_request_completed",
+            game_count=len(games),
+            duration_ms=duration_ms,
+            credits_remaining=self.remaining_credits,
+            credits_used=self.used_credits,
+        )
 
         return games

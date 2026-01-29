@@ -5,6 +5,8 @@ Provides natural language interface:
 - nba-ev version
 """
 
+import os
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -13,6 +15,7 @@ from rich.table import Table
 from nba_betting_agent import __version__
 from nba_betting_agent.cli.parser import parse_query
 from nba_betting_agent.graph.graph import invoke_with_tracing
+from nba_betting_agent.monitoring import configure_logging
 
 # Create Typer app
 cli = typer.Typer(
@@ -172,6 +175,11 @@ def _display_results(result: dict, verbose: bool):
 
 def main():
     """Entry point for CLI."""
+    # Configure structured logging
+    # Use production mode if LOG_MODE=production, otherwise development
+    log_mode = os.getenv("LOG_MODE", "development")
+    configure_logging(log_mode)
+
     cli()
 
 

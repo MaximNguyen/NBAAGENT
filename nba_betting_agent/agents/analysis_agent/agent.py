@@ -10,6 +10,7 @@ Integrates:
 """
 
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Optional
@@ -33,6 +34,9 @@ from nba_betting_agent.agents.analysis_agent.sharp_comparison import (
 from nba_betting_agent.agents.analysis_agent.rlm_detector import detect_rlm
 from nba_betting_agent.agents.analysis_agent.clv_tracker import CLVTracker
 from nba_betting_agent.agents.lines_agent.models import Market, Outcome
+from nba_betting_agent.monitoring import get_logger
+
+log = get_logger()
 
 
 @dataclass
@@ -195,6 +199,8 @@ async def analyze_bets(
     Returns:
         AnalysisResult with opportunities and state-compatible outputs
     """
+    start_time = time.perf_counter()
+
     opportunities: list[BettingOpportunity] = []
     estimated_probabilities: dict = {}
     expected_values: list[dict] = []
@@ -204,6 +210,7 @@ async def analyze_bets(
     # Validate inputs
     if not odds_data:
         errors.append("Analysis Agent: no odds data provided")
+        log.warning("analysis_agent_no_odds_data")
         return AnalysisResult(
             opportunities=[],
             estimated_probabilities={},
@@ -211,6 +218,14 @@ async def analyze_bets(
             analysis_notes=[],
             errors=errors,
         )
+
+    log.info(
+        "analysis_agent_started",
+        game_count=len(odds_data),
+        has_team_stats=bool(team_stats),
+        has_injuries=bool(injuries),
+        min_ev_pct=min_ev_pct,
+    )
 
     # Process each game
     for game in odds_data:
@@ -433,6 +448,14 @@ async def analyze_bets(
         analysis_notes.append(
             f"No +EV opportunities found (min EV threshold: {min_ev_pct}%)"
         )
+
+    duration_ms = int((time.perf_counter() - start_time) * 1000)
+    log.info(
+        "analysis_agent_completed",
+        opportunities_found=len(opportunities),
+        games_analyzed=len(odds_data),
+        duration_ms=duration_ms,
+    )
 
     return AnalysisResult(
         opportunities=opportunities,

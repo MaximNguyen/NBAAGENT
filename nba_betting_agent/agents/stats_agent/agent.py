@@ -15,10 +15,14 @@ Caching strategy:
 
 import asyncio
 import concurrent.futures
+import time
 
 from nba_betting_agent.agents.stats_agent.nba_client import NBAStatsClient
 from nba_betting_agent.agents.stats_agent.espn_injuries import ESPNInjuriesClient
 from nba_betting_agent.agents.stats_agent.cache import StatsCache
+from nba_betting_agent.monitoring import get_logger
+
+log = get_logger()
 
 
 async def collect_stats(
@@ -37,6 +41,8 @@ async def collect_stats(
         - injuries: List of InjuryReport dicts
         - errors: List of error/warning messages
     """
+    start_time = time.perf_counter()
+
     result = {
         "team_stats": {},
         "player_stats": {},  # Empty in Phase 3 (team-focused)
@@ -50,6 +56,7 @@ async def collect_stats(
 
     if not teams:
         result["errors"].append("Stats Agent: no teams to fetch stats for")
+        log.warning("stats_agent_no_teams")
         return result
 
     # Normalize team names to abbreviations
@@ -57,7 +64,10 @@ async def collect_stats(
 
     if not team_abbrs:
         result["errors"].append(f"Stats Agent: could not resolve team names: {teams}")
+        log.error("stats_agent_team_resolution_failed", teams=teams)
         return result
+
+    log.info("stats_agent_started", team_count=len(team_abbrs), teams=team_abbrs)
 
     # Initialize clients with shared cache
     cache = StatsCache()
@@ -84,6 +94,15 @@ async def collect_stats(
     injuries, injury_errors = await espn_client.get_injuries_for_teams(team_abbrs)
     result["errors"].extend(injury_errors)
     result["injuries"] = [inj.model_dump(mode="json") for inj in injuries]
+
+    duration_ms = int((time.perf_counter() - start_time) * 1000)
+    log.info(
+        "stats_agent_completed",
+        team_count=len(team_abbrs),
+        stats_collected=len(result["team_stats"]),
+        injuries_found=len(result["injuries"]),
+        duration_ms=duration_ms,
+    )
 
     return result
 
