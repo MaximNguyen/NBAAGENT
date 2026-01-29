@@ -2,6 +2,7 @@
 
 Uses diskcache.FanoutCache for thread-safe disk caching with automatic TTL expiration.
 Supports async operations via run_in_executor wrapper.
+Includes metrics tracking for cache hit/miss/stale rates.
 """
 
 import asyncio
@@ -11,6 +12,10 @@ from datetime import datetime
 from typing import Callable
 
 from diskcache import FanoutCache
+
+from nba_betting_agent.monitoring import get_logger, CacheMetrics
+
+log = get_logger()
 
 
 @dataclass
@@ -67,7 +72,7 @@ class StatsCache:
     """
 
     def __init__(self, cache_dir: str = ".cache/nba_stats"):
-        """Initialize FanoutCache with 8 shards.
+        """Initialize FanoutCache with 8 shards and metrics tracking.
 
         Args:
             cache_dir: Directory for cache storage (default: .cache/nba_stats)
@@ -77,6 +82,7 @@ class StatsCache:
             shards=8,  # One per concurrent writer recommended
             timeout=0.01,  # 10ms timeout for lock acquisition
         )
+        self.metrics = CacheMetrics()
 
     async def get(self, key: str, data_type: str) -> CacheEntry | None:
         """Async get with stale detection.
@@ -124,6 +130,8 @@ class StatsCache:
         - Stale (ttl < age <= stale_max): return with is_stale=True
         - Too stale (age > stale_max): return None
 
+        Also increments metrics counters and logs cache access.
+
         Args:
             key: Cache key
             data_type: Data type from TTL_CONFIG
@@ -135,12 +143,16 @@ class StatsCache:
         cached = self._cache.get(key, expire_time=True, default=None)
 
         if cached is None:
+            self.metrics.misses += 1
+            log.debug("cache_access", key=key, data_type=data_type, result="miss")
             return None
 
         value, expire_time = cached
 
         # If no expiration set (shouldn't happen, but handle gracefully)
         if expire_time is None:
+            self.metrics.hits += 1
+            log.debug("cache_access", key=key, data_type=data_type, result="hit")
             return CacheEntry(data=value, fetched_at=datetime.now())
 
         # Calculate age and stale status
@@ -149,10 +161,21 @@ class StatsCache:
         age = time.time() - (expire_time - ttl)
 
         if age > stale_max:
+            self.metrics.misses += 1
+            log.debug("cache_access", key=key, data_type=data_type, result="miss_too_stale")
             return None  # Too stale to use
 
         is_stale = age > ttl
         fetched_at = datetime.fromtimestamp(expire_time - ttl)
+
+        # Update metrics based on freshness
+        if is_stale:
+            self.metrics.stale_hits += 1
+            log.debug("cache_access", key=key, data_type=data_type, result="stale_hit")
+        else:
+            self.metrics.hits += 1
+            log.debug("cache_access", key=key, data_type=data_type, result="hit")
+
         return CacheEntry(data=value, fetched_at=fetched_at, is_stale=is_stale)
 
     def _set_sync(self, key: str, data: dict, data_type: str) -> None:
@@ -173,3 +196,18 @@ class StatsCache:
         Warning: Removes all cached data across all shards.
         """
         self._cache.clear()
+
+    def get_metrics(self) -> dict:
+        """Get current cache metrics as dictionary.
+
+        Returns:
+            Dictionary with hits, misses, stale_hits, hit_rate, fresh_hit_rate.
+        """
+        return self.metrics.to_dict()
+
+    def reset_metrics(self) -> None:
+        """Reset cache metrics counters to zero.
+
+        Useful for testing or starting fresh monitoring period.
+        """
+        self.metrics = CacheMetrics()
