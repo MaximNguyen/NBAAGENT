@@ -18,18 +18,12 @@ from nba_betting_agent.ml.training.validation import (
     cross_validate,
     calibration_bins,
 )
+from nba_betting_agent.ml.training.trainer import ModelTrainer
 
 __all__ = [
     "walk_forward_split",
     "evaluate_model",
     "cross_validate",
     "calibration_bins",
+    "ModelTrainer",
 ]
-
-
-def __getattr__(name: str):
-    """Lazy import for ModelTrainer to avoid circular imports."""
-    if name == "ModelTrainer":
-        from nba_betting_agent.ml.training.trainer import ModelTrainer
-        return ModelTrainer
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
