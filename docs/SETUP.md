@@ -134,6 +134,58 @@ LANGSMITH_ENDPOINT=https://api.smith.langchain.com
 LOG_MODE=development
 ```
 
+#### Using Ollama for Free Local Testing
+
+You can use Ollama instead of Claude for development/testing to avoid API costs.
+
+**Step 1: Install Ollama**
+
+Download and install from [ollama.ai](https://ollama.ai):
+- Windows: Download installer
+- Mac: `brew install ollama`
+- Linux: `curl -fsSL https://ollama.ai/install.sh | sh`
+
+**Step 2: Pull a model**
+
+```bash
+# Recommended: Llama 3.1 8B (good balance of quality and speed)
+ollama pull llama3.1
+
+# Alternative: Smaller/faster model
+ollama pull llama3.2
+
+# Alternative: Larger/better quality (requires 16GB+ RAM)
+ollama pull llama3.1:70b
+```
+
+**Step 3: Configure environment**
+
+```bash
+# In your .env file:
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=llama3.1
+# OLLAMA_HOST=http://localhost:11434  # Default, only change if needed
+```
+
+**Step 4: Run Ollama**
+
+```bash
+# Start Ollama service (runs in background)
+ollama serve
+```
+
+**Switching between providers:**
+
+| Environment | LLM_PROVIDER | Notes |
+|-------------|--------------|-------|
+| Development | `ollama` | Free, local, faster iteration |
+| Production | `anthropic` | Better quality analysis |
+
+```bash
+# Quick switch via command line (without editing .env)
+LLM_PROVIDER=ollama nba-ev "find best bets tonight"
+```
+
 ## Verifying Setup
 
 ### Test Odds API Connection
