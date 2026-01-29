@@ -12,7 +12,7 @@ from rich.table import Table
 
 from nba_betting_agent import __version__
 from nba_betting_agent.cli.parser import parse_query
-from nba_betting_agent.graph import app
+from nba_betting_agent.graph.graph import invoke_with_tracing
 
 # Create Typer app
 cli = typer.Typer(
@@ -64,25 +64,44 @@ def analyze(
         ))
         console.print()
 
-    # Invoke LangGraph workflow
+    # Invoke LangGraph workflow with tracing metadata
     try:
-        result = app.invoke({
-            "query": query,
-            "game_date": parsed.game_date,
-            "teams": parsed.teams or [],
-            "filter_params": filter_params,
-            "errors": [],
-            "messages": [],
-            "odds_data": [],
-            "line_discrepancies": [],
-            "team_stats": {},
-            "player_stats": {},
-            "injuries": [],
-            "estimated_probabilities": {},
-            "expected_values": [],
-            "opportunities": [],
-            "recommendation": "",
-        })
+        # Build trace tags and metadata for LangSmith filtering
+        tags = ["cli", "production"]
+        if parsed.teams:
+            tags.append("team-specific")
+        if filter_params.get("confidence"):
+            tags.append(f"confidence-{filter_params['confidence']}")
+
+        metadata = {
+            "query_type": "game_analysis",
+            "min_ev_threshold": filter_params.get("min_ev", 0),
+            "has_team_filter": bool(parsed.teams),
+            "has_confidence_filter": bool(filter_params.get("confidence")),
+            "limit": filter_params.get("limit"),
+        }
+
+        result = invoke_with_tracing(
+            state={
+                "query": query,
+                "game_date": parsed.game_date,
+                "teams": parsed.teams or [],
+                "filter_params": filter_params,
+                "errors": [],
+                "messages": [],
+                "odds_data": [],
+                "line_discrepancies": [],
+                "team_stats": {},
+                "player_stats": {},
+                "injuries": [],
+                "estimated_probabilities": {},
+                "expected_values": [],
+                "opportunities": [],
+                "recommendation": "",
+            },
+            tags=tags,
+            metadata=metadata,
+        )
 
         # Display results
         _display_results(result, verbose)

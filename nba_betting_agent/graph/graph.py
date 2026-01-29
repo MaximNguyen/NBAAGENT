@@ -4,7 +4,11 @@ This module builds the multi-agent workflow with:
 - Parallel execution: Lines and Stats agents run concurrently
 - Sequential execution: Analysis waits for both, Communication waits for Analysis
 - State reducers: Prevent INVALID_CONCURRENT_GRAPH_UPDATE errors
+- LangSmith tracing: Optional observability when LANGSMITH_TRACING=true
 """
+
+import os
+from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
@@ -57,3 +61,48 @@ def build_graph() -> StateGraph:
 
 # Pre-compiled app for easy import and invocation
 app = build_graph()
+
+
+def invoke_with_tracing(
+    state: dict[str, Any],
+    tags: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Invoke the graph with optional LangSmith tracing metadata.
+
+    LangSmith tracing is automatically enabled when LANGSMITH_TRACING=true.
+    This function adds optional tags and metadata for trace filtering and analysis.
+
+    Args:
+        state: Initial state dict for the workflow
+        tags: Optional list of tags for trace filtering (e.g., ["production", "high-confidence"])
+        metadata: Optional metadata dict for trace context (e.g., {"user_id": "123", "session": "abc"})
+
+    Returns:
+        Final state dict after workflow execution
+
+    Example:
+        >>> result = invoke_with_tracing(
+        ...     {"query": "find +ev games tonight", "teams": [], ...},
+        ...     tags=["cli", "production"],
+        ...     metadata={"query_type": "tonight", "min_ev": 0.02}
+        ... )
+    """
+    # Check if LangSmith tracing is enabled via environment variable
+    tracing_enabled = os.getenv("LANGSMITH_TRACING", "false").lower() == "true"
+
+    # Build config for invocation
+    config: dict[str, Any] = {}
+
+    if tracing_enabled and (tags or metadata):
+        # Add tags and metadata only if tracing is enabled
+        if tags:
+            config["tags"] = tags
+        if metadata:
+            config["metadata"] = metadata
+
+    # Invoke graph with or without config
+    if config:
+        return app.invoke(state, config=config)
+    else:
+        return app.invoke(state)
