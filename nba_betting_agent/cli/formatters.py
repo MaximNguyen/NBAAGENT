@@ -1,9 +1,10 @@
-"""Rich table formatters for betting opportunities display.
+"""Formatters for betting opportunities display.
 
-Formats BettingOpportunity objects into terminal tables with proper styling,
-color-coded confidence levels, and detailed view panels.
+Formats BettingOpportunity objects for terminal output.
+Supports both Rich tables (color) and plain text (NO_COLOR mode).
 """
 
+import os
 from typing import Optional
 
 from rich.table import Table
@@ -11,6 +12,11 @@ from rich.panel import Panel
 from rich.text import Text
 
 from nba_betting_agent.agents.analysis_agent.agent import BettingOpportunity
+
+
+def is_plain_mode() -> bool:
+    """Check if plain text mode is enabled (NO_COLOR env var)."""
+    return os.getenv("NO_COLOR") is not None
 
 
 def format_american_odds(decimal_odds: float) -> str:
@@ -34,20 +40,72 @@ def format_american_odds(decimal_odds: float) -> str:
 
 def format_opportunities_table(
     opportunities: list[BettingOpportunity], active_filters: dict = None
-) -> Table:
-    """Format betting opportunities as Rich table.
+) -> str | Table:
+    """Format betting opportunities for display.
 
     Args:
         opportunities: List of BettingOpportunity objects
         active_filters: Dict of active filters for caption display
 
     Returns:
-        Rich Table with sorted opportunities (by EV descending)
+        Plain text string if NO_COLOR mode, else Rich Table
     """
-    # Sort by EV descending (requirement OUT-01)
+    # Sort by EV descending
     sorted_opps = sorted(opportunities, key=lambda x: x.ev_pct, reverse=True)
 
-    # Build caption with count and filters
+    # Plain text mode - clean, readable output
+    if is_plain_mode():
+        return _format_plain_text(sorted_opps, active_filters)
+
+    # Rich table mode (with colors)
+    return _format_rich_table(sorted_opps, active_filters)
+
+
+def _format_plain_text(sorted_opps: list[BettingOpportunity], active_filters: dict = None) -> str:
+    """Format opportunities as clean plain text."""
+    lines = []
+    lines.append("")
+    lines.append("=" * 50)
+    lines.append("  TOP BETTING OPPORTUNITIES")
+    lines.append("=" * 50)
+    lines.append("")
+
+    if not sorted_opps:
+        lines.append("  No opportunities found")
+        lines.append("")
+        return "\n".join(lines)
+
+    # Header
+    lines.append(f"  {'#':<3} {'Bet':<32} {'Odds':>6} {'EV':>7}")
+    lines.append("  " + "-" * 48)
+
+    # Rows
+    for idx, opp in enumerate(sorted_opps, start=1):
+        bet_desc = _format_bet_description(opp)
+        # Truncate long bet descriptions
+        if len(bet_desc) > 30:
+            bet_desc = bet_desc[:27] + "..."
+
+        odds_str = format_american_odds(opp.market_odds)
+        ev_str = f"{opp.ev_pct:+.1f}%"
+
+        lines.append(f"  {idx:<3} {bet_desc:<32} {odds_str:>6} {ev_str:>7}")
+
+    lines.append("")
+
+    # Filter summary
+    if active_filters:
+        filter_summary = _format_filter_summary(active_filters)
+        if filter_summary:
+            lines.append(f"  Filters: {filter_summary}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_rich_table(sorted_opps: list[BettingOpportunity], active_filters: dict = None) -> Table:
+    """Format opportunities as Rich table with colors."""
+    # Build caption with filters
     caption_parts = []
     if active_filters:
         filter_summary = _format_filter_summary(active_filters)
@@ -58,56 +116,39 @@ def format_opportunities_table(
 
     # Create table
     table = Table(
-        title="Betting Opportunities",
+        title="Top Betting Opportunities",
         caption=caption,
         show_header=True,
         header_style="bold cyan",
     )
 
-    # Add columns with proper alignment
-    table.add_column("Rank", justify="right", style="dim", width=4)
-    table.add_column("Matchup", justify="left", style="white", no_wrap=True)
-    table.add_column("Market", justify="center", style="yellow")
-    table.add_column("Our Prob", justify="right", style="cyan")
-    table.add_column("Market Odds", justify="right", style="magenta")
-    table.add_column("EV %", justify="right", style="bold green")
-    table.add_column("Kelly %", justify="right", style="green")
-    table.add_column("Confidence", justify="center")
+    # Simplified columns: just the bet and EV
+    table.add_column("#", justify="right", style="dim", width=3)
+    table.add_column("Bet", justify="left", style="white")
+    table.add_column("Odds", justify="right", style="cyan")
+    table.add_column("EV", justify="right")
 
     # Handle empty list
     if not sorted_opps:
-        table.add_row("", "[dim]No opportunities found[/dim]", "", "", "", "", "", "")
+        table.add_row("", "[dim]No opportunities found[/dim]", "", "")
         return table
 
     # Add rows
     for idx, opp in enumerate(sorted_opps, start=1):
-        # Format market column (e.g., "h2h BOS" or "spreads LAL -3.5")
-        market_display = _format_market_display(opp)
+        bet_desc = _format_bet_description(opp)
+        odds_str = format_american_odds(opp.market_odds)
 
-        # Format probabilities
-        our_prob_str = f"{opp.our_prob * 100:.1f}%"
-
-        # Format market odds as American
-        market_odds_str = format_american_odds(opp.market_odds)
-
-        # Format EV with + sign
-        ev_str = f"+{opp.ev_pct:.1f}%"
-
-        # Format Kelly percentage
-        kelly_str = f"{opp.kelly_bet_pct:.1f}%"
-
-        # Color-code confidence
-        confidence_str = _format_confidence(opp.confidence)
+        # Format EV with color based on positive/negative
+        if opp.ev_pct >= 0:
+            ev_str = f"[bold green]+{opp.ev_pct:.1f}%[/bold green]"
+        else:
+            ev_str = f"[red]{opp.ev_pct:.1f}%[/red]"
 
         table.add_row(
             str(idx),
-            opp.matchup,
-            market_display,
-            our_prob_str,
-            market_odds_str,
+            bet_desc,
+            odds_str,
             ev_str,
-            kelly_str,
-            confidence_str,
         )
 
     return table
@@ -155,6 +196,14 @@ def format_opportunity_detail(
         lines.append("  (Sharp money may be on this side)")
         lines.append("")
 
+    # ML model explanation if present
+    if opp.ml_explanation:
+        lines.append("[bold]ML Model Analysis:[/bold]")
+        lines.append(f"  [cyan]{opp.ml_explanation}[/cyan]")
+        if opp.ml_prob is not None:
+            lines.append(f"  Model Probability: [bold]{opp.ml_prob * 100:.1f}%[/bold]")
+        lines.append("")
+
     # LLM insight if present
     if opp.llm_insight:
         lines.append("[bold]AI Analysis:[/bold]")
@@ -184,8 +233,40 @@ def format_opportunity_detail(
     )
 
 
+def _format_bet_description(opp: BettingOpportunity) -> str:
+    """Format a clean bet description.
+
+    Args:
+        opp: BettingOpportunity object
+
+    Returns:
+        Formatted string like "BOS ML @ DraftKings" or "Over 220.5 @ FanDuel"
+    """
+    # Get team/outcome name
+    outcome = opp.outcome
+
+    # Format based on market type
+    if opp.market == "h2h":
+        # Moneyline bet: "Boston Celtics ML"
+        bet_type = f"{outcome} ML"
+    elif opp.market == "spreads":
+        # Spread bet: "Boston Celtics -3.5"
+        bet_type = outcome
+    elif opp.market == "totals":
+        # Total bet: "Over 220.5" or "Under 220.5"
+        bet_type = outcome
+    else:
+        bet_type = f"{opp.market}: {outcome}"
+
+    # Add ML indicator if ML model was used
+    ml_indicator = " [ML]" if opp.ml_prob is not None else ""
+
+    # Add bookmaker
+    return f"{bet_type}{ml_indicator} @ {opp.bookmaker}"
+
+
 def _format_market_display(opp: BettingOpportunity) -> str:
-    """Format market column display.
+    """Format market column display (legacy, kept for detail view).
 
     Args:
         opp: BettingOpportunity object

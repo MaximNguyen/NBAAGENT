@@ -7,8 +7,17 @@ Provides natural language interface:
 
 import os
 
+from dotenv import load_dotenv
+
+# Load .env file before anything else
+load_dotenv()
+
 import typer
 from rich.console import Console
+
+# Force colors on Windows if terminal supports it
+if os.name == 'nt':
+    os.system('')  # Enable ANSI escape codes on Windows
 from rich.panel import Panel
 from rich.table import Table
 
@@ -20,36 +29,86 @@ from nba_betting_agent.monitoring import configure_logging
 # Create Typer app
 cli = typer.Typer(
     name="nba-ev",
-    help="NBA Betting Analysis - Find +EV opportunities using multi-agent analysis",
+    help="""NBA Betting Analysis - Find +EV opportunities using multi-agent analysis.
+
+WHAT IT DOES:
+  Analyzes NBA betting lines across multiple sportsbooks to find positive
+  expected value (+EV) opportunities. Uses real-time odds data, team stats,
+  and injury reports to calculate fair probabilities.
+
+QUICK START:
+  nba-ev analyze "find best bets tonight"
+  nba-ev analyze "celtics vs lakers" --min-ev 0.05
+  nba-ev analyze "all games" --min-ev -1 --limit 10
+
+DATA SOURCES:
+  • Odds: The Odds API (DraftKings, FanDuel, BetMGM, etc.)
+  • Stats: NBA API (team records, advanced metrics)
+  • Injuries: ESPN injury reports
+""",
     add_completion=False,
 )
 
 # Rich console for formatted output
-console = Console()
+# Disable colors if NO_COLOR env var is set (standard convention)
+console = Console(force_terminal=True, no_color=os.getenv("NO_COLOR") is not None)
+
+
+def _get_default_min_ev() -> float:
+    """Get default min_ev from environment or use 0.02."""
+    env_val = os.getenv("DEFAULT_MIN_EV")
+    if env_val is not None:
+        try:
+            return float(env_val)
+        except ValueError:
+            pass
+    return 0.02
 
 
 @cli.command()
 def analyze(
-    query: str = typer.Argument(..., help="Natural language query (e.g., 'find +ev games tonight')"),
-    min_ev: float = typer.Option(0.02, "--min-ev", help="Minimum expected value threshold (default: 2%)"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed analysis"),
+    query: str = typer.Argument(..., help="Natural language query (e.g., 'best bets tonight', 'celtics vs lakers')"),
+    min_ev: float = typer.Option(None, "--min-ev", "-e", help="Min EV threshold (0.02 = 2%). Use -1 to see all bets. Default from DEFAULT_MIN_EV env var"),
+    limit: int = typer.Option(5, "--limit", "-n", help="Show top N bets (default: 5, use 0 for all)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed stats and processing info"),
 ):
-    """Analyze NBA games for positive expected value betting opportunities.
+    """Analyze NBA games for betting opportunities.
 
-    Examples:
-        nba-ev analyze "find +ev games tonight"
-        nba-ev analyze "best bets for celtics vs lakers" --min-ev 0.05
-        nba-ev analyze "show me props for next week" --verbose
+    Shows the top bets sorted by expected value (EV). Positive EV means
+    the bet has an edge over the sportsbook.
+
+    \b
+    EXAMPLES:
+      nba-ev analyze "best bets tonight"          # Top 5 +EV bets for today
+      nba-ev analyze "celtics vs lakers"          # Specific matchup analysis
+      nba-ev analyze "all games" --min-ev -1      # All bets including -EV
+      nba-ev analyze "tonight" -n 10 -e 0.01      # Top 10 with 1% min EV
+
+    \b
+    UNDERSTANDING EV:
+      +2.5% EV = For every $100 bet, expect $2.50 profit long-term
+      -3.0% EV = House edge of 3% (typical sportsbook vig)
     """
     # Parse natural language query
     parsed = parse_query(query)
 
     # Build filter_params from parsed query and CLI options
-    # CLI option min_ev takes precedence over parsed natural language
+    # Priority: CLI flag > parsed query > env var > default (0.02)
     filter_params = {}
-    filter_params["min_ev"] = min_ev if min_ev > 0 else parsed.min_ev
+    if min_ev is not None:
+        # CLI flag provided
+        filter_params["min_ev"] = min_ev
+    elif parsed.min_ev is not None:
+        # Parsed from natural language query
+        filter_params["min_ev"] = parsed.min_ev
+    else:
+        # Use environment variable or default
+        filter_params["min_ev"] = _get_default_min_ev()
     filter_params["confidence"] = parsed.confidence
-    filter_params["limit"] = parsed.limit
+    # CLI --limit takes precedence; 0 means show all (no limit)
+    filter_params["limit"] = limit if limit != 5 else (parsed.limit if parsed.limit is not None else limit)
+    if filter_params["limit"] == 0:
+        filter_params["limit"] = None  # No limit
     # Note: team filter already applied via state.teams, market not yet supported
 
     if verbose:
@@ -61,7 +120,7 @@ def analyze(
             f"[bold cyan]Bet Type:[/bold cyan] {parsed.bet_type or 'All'}\n"
             f"[bold cyan]Min EV:[/bold cyan] {filter_params.get('min_ev', 0) * 100:.1f}%\n"
             f"[bold cyan]Confidence:[/bold cyan] {filter_params.get('confidence') or 'Any'}\n"
-            f"[bold cyan]Limit:[/bold cyan] {filter_params.get('limit') or 'All'}",
+            f"[bold cyan]Limit:[/bold cyan] {filter_params.get('limit') or 'All (use --limit 0 for all)'}",
             title="Parsed Query",
             border_style="cyan",
         ))
@@ -116,9 +175,14 @@ def analyze(
 
 @cli.command()
 def version():
-    """Show version information."""
+    """Show version and configuration info."""
     console.print(f"[bold cyan]NBA Betting Analysis[/bold cyan] v{__version__}")
-    console.print("Multi-agent system for finding +EV NBA betting opportunities")
+    console.print()
+    console.print("[bold]Configuration:[/bold]")
+    console.print(f"  Odds API: {'✓ configured' if os.getenv('ODDS_API_KEY') else '✗ missing ODDS_API_KEY'}")
+    console.print(f"  LLM: {os.getenv('LLM_PROVIDER', 'anthropic')} ({os.getenv('OLLAMA_MODEL', 'claude') if os.getenv('LLM_PROVIDER') == 'ollama' else 'claude-sonnet-4'})")
+    console.print(f"  Default Min EV: {_get_default_min_ev()} ({_get_default_min_ev() * 100:.0f}%)")
+    console.print(f"  Tracing: {'enabled' if os.getenv('LANGSMITH_TRACING') == 'true' else 'disabled'}")
 
 
 def _display_results(result: dict, verbose: bool):

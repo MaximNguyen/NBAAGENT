@@ -175,10 +175,15 @@ def communication_agent(state: BettingAnalysisState) -> dict:
     # Get filter parameters from state
     filter_params = state.get("filter_params", {})
 
+    # Convert min_ev from decimal (0.02) to percentage (2.0) for comparison with ev_pct
+    min_ev_pct = filter_params.get("min_ev")
+    if min_ev_pct is not None:
+        min_ev_pct = min_ev_pct * 100  # 0.02 -> 2.0, -1 -> -100
+
     # Apply filters
     filtered_opps = filter_opportunities(
         opportunities,
-        min_ev=filter_params.get("min_ev"),
+        min_ev=min_ev_pct,
         confidence=filter_params.get("confidence"),
         team=filter_params.get("team"),
         market=filter_params.get("market"),
@@ -208,14 +213,18 @@ def communication_agent(state: BettingAnalysisState) -> dict:
 
     # Format opportunities table
     active_filters = {k: v for k, v in filter_params.items() if v is not None and k != "limit"}
-    table = format_opportunities_table(filtered_opps, active_filters=active_filters)
+    result = format_opportunities_table(filtered_opps, active_filters=active_filters)
 
-    # Render table to string using Rich console
-    console = Console()
-    with console.capture() as capture:
-        console.print(table)
-
-    recommendation = capture.get()
+    # Check if result is plain text string or Rich Table
+    if isinstance(result, str):
+        # Plain text mode - use directly
+        recommendation = result
+    else:
+        # Rich Table - render to string
+        console = Console()
+        with console.capture() as capture:
+            console.print(result)
+        recommendation = capture.get()
 
     return {
         "recommendation": recommendation,

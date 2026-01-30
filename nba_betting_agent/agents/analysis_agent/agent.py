@@ -7,12 +7,16 @@ Integrates:
 - Sharp/soft book comparison
 - Reverse line movement detection
 - LLM matchup analysis (optional)
+- ML-based probability estimation (Phase 7)
 """
 
 import asyncio
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from nba_betting_agent.agents.analysis_agent.vig_removal import (
@@ -38,6 +42,71 @@ from nba_betting_agent.monitoring import get_logger
 
 log = get_logger()
 
+# ML Model Integration
+_ml_estimator = None
+_ml_historical_games = None
+_ml_enabled = os.getenv("ML_ENABLED", "true").lower() in ("true", "1", "yes")
+_ml_model_path = os.getenv("ML_MODEL_PATH", ".models/moneyline")
+
+
+def _get_ml_estimator():
+    """Lazily load the ML probability estimator."""
+    global _ml_estimator, _ml_historical_games
+
+    if not _ml_enabled:
+        return None
+
+    if _ml_estimator is not None:
+        return _ml_estimator
+
+    try:
+        from nba_betting_agent.agents.analysis_agent.ml_probability import MLProbabilityEstimator
+        from nba_betting_agent.ml.data.historical import load_historical_games
+
+        model_path = Path(_ml_model_path)
+
+        # Check if model exists
+        if not (model_path.parent / f"{model_path.name}.lgb").exists():
+            log.info("ml_model_not_found_training", path=str(model_path))
+            # Train a new model
+            _train_ml_model(model_path)
+
+        # Load historical games for feature computation
+        if _ml_historical_games is None:
+            log.info("ml_loading_historical_games")
+            _ml_historical_games = load_historical_games(["2023-24", "2022-23"])
+            log.info("ml_historical_games_loaded", count=len(_ml_historical_games))
+
+        # Load the estimator
+        _ml_estimator = MLProbabilityEstimator(model_path=str(model_path))
+        log.info("ml_estimator_loaded", model_path=str(model_path))
+
+        return _ml_estimator
+
+    except Exception as e:
+        log.warning("ml_estimator_load_failed", error=str(e))
+        return None
+
+
+def _train_ml_model(model_path: Path):
+    """Train and save a new ML model."""
+    from nba_betting_agent.ml.data.historical import load_historical_games
+    from nba_betting_agent.ml.training.trainer import ModelTrainer
+
+    log.info("ml_model_training_started")
+
+    # Load historical games
+    games = load_historical_games(["2023-24", "2022-23"])
+    log.info("ml_training_games_loaded", count=len(games))
+
+    # Train model
+    trainer = ModelTrainer(model_dir=str(model_path.parent))
+    model = trainer.train_from_games(games)
+
+    # Save model
+    trainer.save_model(model, model_path.name)
+    log.info("ml_model_trained_and_saved", path=str(model_path))
+
 
 @dataclass
 class BettingOpportunity:
@@ -58,6 +127,8 @@ class BettingOpportunity:
         sharp_edge: Edge vs sharp book if available
         rlm_signal: Reverse line movement if detected
         llm_insight: Key insight from LLM if run
+        ml_prob: ML model probability (if ML enabled)
+        ml_explanation: ML model explanation (key factors)
     """
 
     game_id: str
@@ -74,6 +145,8 @@ class BettingOpportunity:
     sharp_edge: Optional[float] = None
     rlm_signal: Optional[str] = None
     llm_insight: Optional[str] = None
+    ml_prob: Optional[float] = None
+    ml_explanation: Optional[str] = None
 
 
 @dataclass
@@ -134,11 +207,10 @@ def assess_confidence(has_stats: bool, has_injuries: bool, has_sharp: bool) -> s
 def generate_base_probability(
     home_stats: dict, away_stats: dict, fair_prob: float
 ) -> float:
-    """Generate probability estimate from stats + market.
+    """Generate probability estimate from stats + market (fallback when ML unavailable).
 
     For MVP: Start with market fair odds as baseline (markets are efficient).
     Adjust slightly based on recent form and home court advantage.
-    Full model development is Phase 6+ enhancement.
 
     Args:
         home_stats: Home team stats dict
@@ -176,6 +248,112 @@ def generate_base_probability(
 
     # Clamp to valid probability range
     return max(0.05, min(0.95, prob))
+
+
+def generate_ml_probability(
+    home_team: str,
+    away_team: str,
+    fair_prob: float,
+) -> tuple[float, Optional[str]]:
+    """Generate probability estimate using ML model.
+
+    Uses trained LightGBM model with 22 features (team stats, situational).
+    Falls back to market-based estimate if ML unavailable.
+
+    Args:
+        home_team: Home team abbreviation
+        away_team: Away team abbreviation
+        fair_prob: Fair probability from market odds (for blending)
+
+    Returns:
+        Tuple of (probability, explanation or None)
+    """
+    global _ml_historical_games
+
+    estimator = _get_ml_estimator()
+
+    if estimator is None or _ml_historical_games is None:
+        # ML not available, return fair prob with no explanation
+        return fair_prob, None
+
+    try:
+        # Use today's date for prediction
+        game_date = date.today()
+
+        # Map team names to abbreviations if needed
+        home_abbr = _normalize_team_abbr(home_team)
+        away_abbr = _normalize_team_abbr(away_team)
+
+        # Get ML prediction
+        result = estimator.estimate_probability(
+            home_team=home_abbr,
+            away_team=away_abbr,
+            game_date=game_date,
+            historical_games=_ml_historical_games,
+            market_prob=fair_prob,
+        )
+
+        # Return blended probability and explanation
+        return result["blended_prob"], result["explanation"]
+
+    except Exception as e:
+        log.warning("ml_probability_failed", error=str(e), home=home_team, away=away_team)
+        return fair_prob, None
+
+
+def _normalize_team_abbr(team_name: str) -> str:
+    """Normalize team name to 3-letter abbreviation."""
+    # Common mappings
+    TEAM_MAP = {
+        "boston celtics": "BOS", "celtics": "BOS",
+        "miami heat": "MIA", "heat": "MIA",
+        "new york knicks": "NYK", "knicks": "NYK",
+        "philadelphia 76ers": "PHI", "76ers": "PHI",
+        "brooklyn nets": "BKN", "nets": "BKN",
+        "milwaukee bucks": "MIL", "bucks": "MIL",
+        "cleveland cavaliers": "CLE", "cavaliers": "CLE", "cavs": "CLE",
+        "chicago bulls": "CHI", "bulls": "CHI",
+        "indiana pacers": "IND", "pacers": "IND",
+        "detroit pistons": "DET", "pistons": "DET",
+        "atlanta hawks": "ATL", "hawks": "ATL",
+        "orlando magic": "ORL", "magic": "ORL",
+        "washington wizards": "WAS", "wizards": "WAS",
+        "charlotte hornets": "CHA", "hornets": "CHA",
+        "toronto raptors": "TOR", "raptors": "TOR",
+        "denver nuggets": "DEN", "nuggets": "DEN",
+        "minnesota timberwolves": "MIN", "timberwolves": "MIN", "wolves": "MIN",
+        "oklahoma city thunder": "OKC", "thunder": "OKC",
+        "portland trail blazers": "POR", "trail blazers": "POR", "blazers": "POR",
+        "utah jazz": "UTA", "jazz": "UTA",
+        "los angeles lakers": "LAL", "lakers": "LAL",
+        "los angeles clippers": "LAC", "clippers": "LAC",
+        "phoenix suns": "PHX", "suns": "PHX",
+        "sacramento kings": "SAC", "kings": "SAC",
+        "golden state warriors": "GSW", "warriors": "GSW",
+        "memphis grizzlies": "MEM", "grizzlies": "MEM",
+        "new orleans pelicans": "NOP", "pelicans": "NOP",
+        "dallas mavericks": "DAL", "mavericks": "DAL", "mavs": "DAL",
+        "houston rockets": "HOU", "rockets": "HOU",
+        "san antonio spurs": "SAS", "spurs": "SAS",
+    }
+
+    name_lower = team_name.lower().strip()
+
+    # Direct lookup
+    if name_lower in TEAM_MAP:
+        return TEAM_MAP[name_lower]
+
+    # Already an abbreviation?
+    if len(team_name) <= 3 and team_name.upper() in [v for v in TEAM_MAP.values()]:
+        return team_name.upper()
+
+    # Partial match
+    for key, abbr in TEAM_MAP.items():
+        if key in name_lower or name_lower in key:
+            return abbr
+
+    # Fallback: first 3 chars
+    return team_name[:3].upper()
 
 
 async def analyze_bets(
@@ -294,27 +472,39 @@ async def analyze_bets(
                     for outcome_name, outcome_analysis in fair_odds_analysis.items():
                         # Generate base probability
                         fair_prob = outcome_analysis["fair_prob"]
+                        ml_explanation = None
+                        ml_prob = None
 
-                        # For h2h markets, adjust based on stats
+                        # For h2h markets, use ML model if available
                         if market_key == "h2h":
                             # Determine if this is home or away team
                             is_home = outcome_name == home_team
+
                             if is_home:
-                                our_prob = generate_base_probability(
+                                # Try ML probability first
+                                ml_prob, ml_explanation = generate_ml_probability(
+                                    home_team, away_team, fair_prob
+                                )
+                                our_prob = ml_prob if ml_prob else generate_base_probability(
                                     home_stats, away_stats, fair_prob
                                 )
                             else:
                                 # Away team - flip the logic
                                 away_fair_prob = fair_prob
-                                our_prob = 1.0 - generate_base_probability(
+                                home_prob, ml_explanation = generate_ml_probability(
+                                    home_team, away_team, 1.0 - away_fair_prob
+                                )
+                                our_prob = 1.0 - home_prob if home_prob else 1.0 - generate_base_probability(
                                     home_stats, away_stats, 1.0 - away_fair_prob
                                 )
+                                ml_prob = 1.0 - home_prob if home_prob else None
                         else:
                             # For spreads/totals, use fair prob as baseline
                             our_prob = fair_prob
 
-                        # Apply calibration if available
-                        our_prob = calibrate_probability(our_prob, calibrator)
+                        # Apply calibration if available (skip if ML already calibrated)
+                        if ml_prob is None:
+                            our_prob = calibrate_probability(our_prob, calibrator)
 
                         # Store probability estimate
                         if outcome_name not in estimated_probabilities[game_id]:
@@ -335,9 +525,10 @@ async def analyze_bets(
                                 kelly_fraction=0.25,
                             )
 
-                            # Assess confidence
+                            # Assess confidence (higher if ML model used)
+                            has_ml = ml_prob is not None
                             confidence = assess_confidence(
-                                has_stats, has_injuries, has_sharp
+                                has_stats or has_ml, has_injuries, has_sharp or has_ml
                             )
 
                             # Create opportunity
@@ -353,6 +544,8 @@ async def analyze_bets(
                                 ev_pct=ev_result["ev_percentage"],
                                 kelly_bet_pct=kelly_result["fractional_pct"],
                                 confidence=confidence,
+                                ml_prob=ml_prob,
+                                ml_explanation=ml_explanation,
                             )
 
                             opportunities.append(opportunity)
@@ -369,6 +562,8 @@ async def analyze_bets(
                                     "market_odds": outcome_analysis["market_odds"],
                                     "ev_pct": round(ev_result["ev_percentage"], 2),
                                     "confidence": confidence,
+                                    "ml_prob": round(ml_prob, 3) if ml_prob else None,
+                                    "ml_explanation": ml_explanation,
                                 }
                             )
 
@@ -439,11 +634,17 @@ async def analyze_bets(
     # Sort opportunities by EV descending
     opportunities.sort(key=lambda x: x.ev_pct, reverse=True)
 
+    # Check if ML was used
+    ml_used = any(opp.ml_prob is not None for opp in opportunities)
+
     # Add summary notes
     if opportunities:
         analysis_notes.insert(
             0, f"Found {len(opportunities)} +EV opportunities (min EV: {min_ev_pct}%)"
         )
+        if ml_used:
+            ml_count = sum(1 for opp in opportunities if opp.ml_prob is not None)
+            analysis_notes.insert(1, f"ML model used for {ml_count} predictions (22 features, LightGBM)")
     else:
         analysis_notes.append(
             f"No +EV opportunities found (min EV threshold: {min_ev_pct}%)"
@@ -509,10 +710,15 @@ def analysis_agent_impl(state: dict) -> dict:
     team_stats = state.get("team_stats", {})
     injuries = state.get("injuries", [])
 
+    # Get min_ev from filter_params (set by CLI --min-ev flag)
+    # Default to -100 to show ALL opportunities - let communication_agent filter
+    filter_params = state.get("filter_params", {})
+    min_ev_pct = filter_params.get("min_ev", -100) * 100 if filter_params.get("min_ev") is not None else -100
+
     # Run async analysis in thread pool (same pattern as Lines/Stats agents)
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(
-            asyncio.run, analyze_bets(odds_data, team_stats, injuries)
+            asyncio.run, analyze_bets(odds_data, team_stats, injuries, min_ev_pct=min_ev_pct)
         )
         result = future.result(timeout=60)
 
