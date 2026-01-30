@@ -4,11 +4,13 @@ Provides functions to fetch historical NBA game data and betting odds
 for training and backtesting ML probability models.
 
 Uses:
-- NBA API (LeagueGameFinder) for historical game results
-- The Odds API for historical betting odds
+- Database (GamesRepository, OddsRepository) for persistent storage
+- NBA API (LeagueGameFinder) for historical game results (fallback)
+- The Odds API for historical betting odds (fallback)
 - diskcache for 30-day caching of historical data
 """
 
+import asyncio
 import os
 import time
 from datetime import date, datetime
@@ -18,6 +20,8 @@ from diskcache import Cache
 from dotenv import load_dotenv
 from nba_api.stats.endpoints import leaguegamefinder
 
+from nba_betting_agent.db import get_games_repository, get_odds_repository
+from nba_betting_agent.db.session import get_session
 from nba_betting_agent.ml.data.schema import HistoricalGame, HistoricalOdds
 from nba_betting_agent.monitoring import get_logger
 
@@ -30,6 +34,10 @@ CACHE_TTL = 30 * 24 * 60 * 60  # 30 days in seconds
 # NBA API rate limit: max ~2 requests per second
 NBA_API_DELAY = 0.6  # seconds between requests
 
+# Database mode: try database first, fall back to API
+# Set USE_DATABASE=false to skip database entirely (pure API mode)
+USE_DATABASE = os.getenv("USE_DATABASE", "true").lower() in ("true", "1", "yes", "on")
+
 
 def _get_cache() -> Cache:
     """Get or create the historical data cache.
@@ -40,23 +48,16 @@ def _get_cache() -> Cache:
     return Cache(CACHE_DIR)
 
 
-def load_historical_games(seasons: list[str]) -> list[HistoricalGame]:
-    """Load historical NBA game data for specified seasons.
+def _load_games_from_api(seasons: list[str]) -> list[HistoricalGame]:
+    """Load historical games directly from NBA API (fallback mode).
 
-    Fetches completed regular season games from NBA API using LeagueGameFinder.
-    Results are cached with 30-day TTL since historical data doesn't change.
+    This is the fallback when database is unavailable or USE_DATABASE=false.
 
     Args:
         seasons: List of season strings (e.g., ["2022-23", "2023-24"])
 
     Returns:
         List of HistoricalGame objects with game outcomes
-
-    Example:
-        games = load_historical_games(["2023-24"])
-        print(f"Loaded {len(games)} games")
-        for game in games[:5]:
-            print(f"{game.away_team} @ {game.home_team}: {game.away_score}-{game.home_score}")
     """
     cache = _get_cache()
     all_games: list[HistoricalGame] = []
@@ -168,18 +169,91 @@ def load_historical_games(seasons: list[str]) -> list[HistoricalGame]:
     return all_games
 
 
-def load_historical_odds(
+def load_historical_games(seasons: list[str]) -> list[HistoricalGame]:
+    """Load historical NBA game data for specified seasons.
+
+    Flow:
+    1. If USE_DATABASE=true, try to get from database
+    2. If database has data, return it
+    3. If database empty/unavailable, fetch from API
+    4. Store API data in database for next time
+
+    Args:
+        seasons: List of season strings (e.g., ["2022-23", "2023-24"])
+
+    Returns:
+        List of HistoricalGame objects with game outcomes
+
+    Example:
+        games = load_historical_games(["2023-24"])
+        print(f"Loaded {len(games)} games")
+        for game in games[:5]:
+            print(f"{game.away_team} @ {game.home_team}: {game.away_score}-{game.home_score}")
+    """
+    if not USE_DATABASE:
+        log.info("database_mode_disabled", message="Using API-only mode")
+        return _load_games_from_api(seasons)
+
+    # Try database first (sync wrapper for async)
+    async def _load_with_db():
+        async with get_session() as session:
+            repo = get_games_repository(session)
+            all_games = []
+            for season in seasons:
+                # Try database first
+                games = await repo.get_by_season(season)
+
+                if not games:
+                    # Database empty, fetch from API
+                    log.info(
+                        "games_database_empty",
+                        season=season,
+                        message="No games in database, fetching from API",
+                    )
+                    api_games = _load_games_from_api([season])
+
+                    if api_games:
+                        # Store in database for future queries
+                        await repo.bulk_save(api_games)
+                        log.info(
+                            "games_backfill_completed",
+                            season=season,
+                            count=len(api_games),
+                        )
+                    games = api_games
+
+                all_games.extend(games)
+            return all_games
+
+    try:
+        # Handle nested event loop (LangGraph compatibility)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            # Running in async context, use ThreadPoolExecutor
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _load_with_db())
+                return future.result()
+        else:
+            return asyncio.run(_load_with_db())
+
+    except Exception as e:
+        log.error("database_load_failed", error=str(e))
+        return _load_games_from_api(seasons)
+
+
+def _load_odds_from_api(
     start_date: date,
     end_date: date,
     api_key: str | None = None,
 ) -> list[HistoricalOdds]:
-    """Load historical betting odds from The Odds API.
+    """Load historical odds directly from The Odds API (fallback mode).
 
-    Fetches historical odds snapshots for NBA games within the date range.
-    Results are cached with 30-day TTL.
-
-    Note: The Odds API historical endpoint requires a paid tier for dates
-    in the past. Free tier users will get an empty list with a warning.
+    This is the fallback when database is unavailable or USE_DATABASE=false.
 
     Args:
         start_date: Start date for odds retrieval (inclusive)
@@ -188,14 +262,6 @@ def load_historical_odds(
 
     Returns:
         List of HistoricalOdds objects, empty if API key missing or API error
-
-    Example:
-        from datetime import date
-        odds = load_historical_odds(
-            start_date=date(2024, 1, 1),
-            end_date=date(2024, 1, 31),
-        )
-        print(f"Loaded {len(odds)} odds records")
     """
     load_dotenv()
 
@@ -279,6 +345,101 @@ def load_historical_odds(
         current_date = _next_day(current_date)
 
     return all_odds
+
+
+def load_historical_odds(
+    start_date: date,
+    end_date: date,
+    api_key: str | None = None,
+) -> list[HistoricalOdds]:
+    """Load historical betting odds from database or The Odds API.
+
+    Flow:
+    1. If USE_DATABASE=true, try to get from database
+    2. If database has data, return it
+    3. If database empty/unavailable, fetch from API
+    4. Store API data in database for next time
+
+    Note: The Odds API historical endpoint requires a paid tier for dates
+    in the past. Free tier users will get an empty list with a warning.
+
+    Args:
+        start_date: Start date for odds retrieval (inclusive)
+        end_date: End date for odds retrieval (inclusive)
+        api_key: The Odds API key. If None, reads from THE_ODDS_API_KEY env var.
+
+    Returns:
+        List of HistoricalOdds objects, empty if API key missing or API error
+
+    Example:
+        from datetime import date
+        odds = load_historical_odds(
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 31),
+        )
+        print(f"Loaded {len(odds)} odds records")
+    """
+    if not USE_DATABASE:
+        log.info("database_mode_disabled", message="Using API-only mode for odds")
+        return _load_odds_from_api(start_date, end_date, api_key)
+
+    # Try database first (sync wrapper for async)
+    async def _load_with_db():
+        async with get_session() as session:
+            repo = get_odds_repository(session)
+
+            # Check database for this date range
+            odds = await repo.get_odds_for_date_range(start_date, end_date)
+
+            if odds:
+                log.info(
+                    "odds_database_hit",
+                    start=start_date.isoformat(),
+                    end=end_date.isoformat(),
+                    count=len(odds),
+                )
+                return odds
+
+            # Database empty, fetch from API
+            log.info(
+                "odds_database_empty",
+                start=start_date.isoformat(),
+                end=end_date.isoformat(),
+                message="No odds in database, fetching from API",
+            )
+            api_odds = _load_odds_from_api(start_date, end_date, api_key)
+
+            if api_odds:
+                # Store in database for future queries
+                await repo.save_odds(api_odds)
+                log.info(
+                    "odds_backfill_completed",
+                    start=start_date.isoformat(),
+                    end=end_date.isoformat(),
+                    count=len(api_odds),
+                )
+
+            return api_odds
+
+    try:
+        # Handle nested event loop (LangGraph compatibility)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            # Running in async context, use ThreadPoolExecutor
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor() as pool:
+                future = pool.submit(asyncio.run, _load_with_db())
+                return future.result()
+        else:
+            return asyncio.run(_load_with_db())
+
+    except Exception as e:
+        log.error("database_load_failed", error=str(e))
+        return _load_odds_from_api(start_date, end_date, api_key)
 
 
 def _next_day(d: date) -> date:

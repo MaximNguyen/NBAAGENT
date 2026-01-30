@@ -14,7 +14,6 @@ from nba_betting_agent.db.models import (
     game_dataclass_to_model,
     model_to_game_dataclass,
 )
-from nba_betting_agent.ml.data.historical import load_historical_games
 from nba_betting_agent.ml.data.schema import HistoricalGame
 from nba_betting_agent.monitoring import get_logger
 
@@ -47,45 +46,30 @@ class GamesRepository:
         self.logger = get_logger()
 
     async def get_by_season(
-        self, season: str, fallback_to_api: bool = True
+        self, season: str
     ) -> list[HistoricalGame]:
-        """Get games for a season from database or API fallback.
-
-        Query priority:
-        1. Database (if available and has data)
-        2. API fallback (if enabled and DB empty/unavailable)
-        3. Empty list (if fallback disabled)
+        """Get games for a season from database.
 
         Args:
             season: NBA season string (e.g., "2023-24")
-            fallback_to_api: Whether to use API when DB unavailable/empty
 
         Returns:
-            List of HistoricalGame objects, sorted by date ascending
+            List of HistoricalGame objects, sorted by date ascending.
+            Returns empty list if database unavailable or no data.
 
         Example:
             repo = GamesRepository(session)
             games = await repo.get_by_season("2023-24")
             print(f"Found {len(games)} games")
         """
-        # Fast path: database unavailable, use API immediately
+        # Fast path: database unavailable
         if not self._db_available:
-            if fallback_to_api:
-                self.logger.warning(
-                    "games_repo_db_unavailable",
-                    season=season,
-                    fallback="api",
-                    message="Database unavailable, using API fallback",
-                )
-                return load_historical_games([season])
-            else:
-                self.logger.warning(
-                    "games_repo_db_unavailable",
-                    season=season,
-                    fallback="none",
-                    message="Database unavailable and fallback disabled",
-                )
-                return []
+            self.logger.warning(
+                "games_repo_db_unavailable",
+                season=season,
+                message="Database unavailable",
+            )
+            return []
 
         # Try database query
         try:
@@ -109,28 +93,15 @@ class GamesRepository:
                 return games
 
             # Database is up but has no data for this season
-            if fallback_to_api:
-                self.logger.info(
-                    "games_repo_db_empty",
-                    season=season,
-                    message="No games in database, fetching from API",
-                )
-                # Fetch from API and save to database
-                api_games = load_historical_games([season])
-                if api_games:
-                    # Store in database for future queries
-                    await self.bulk_save(api_games)
-                    self.logger.info(
-                        "games_repo_backfill_completed",
-                        season=season,
-                        count=len(api_games),
-                    )
-                return api_games
-            else:
-                return []
+            self.logger.info(
+                "games_repo_db_empty",
+                season=season,
+                message="No games in database for this season",
+            )
+            return []
 
         except Exception as e:
-            # Database error - mark as unavailable and fall back
+            # Database error - mark as unavailable
             self.logger.error(
                 "games_repo_db_error",
                 season=season,
@@ -139,16 +110,7 @@ class GamesRepository:
                 exc_info=True,
             )
             self._db_available = False
-
-            if fallback_to_api:
-                self.logger.info(
-                    "games_repo_api_fallback",
-                    season=season,
-                    message="Database error, falling back to API",
-                )
-                return load_historical_games([season])
-            else:
-                return []
+            return []
 
     async def bulk_save(self, games: list[HistoricalGame]) -> int:
         """Bulk insert games into database with conflict handling.
