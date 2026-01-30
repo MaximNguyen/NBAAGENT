@@ -16,6 +16,7 @@ from datetime import date, datetime
 from unittest.mock import patch
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -25,7 +26,7 @@ from nba_betting_agent.db.repositories.odds import OddsRepository
 from nba_betting_agent.ml.data.schema import HistoricalOdds
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_engine():
     """Create in-memory SQLite engine for testing."""
     engine = create_async_engine(
@@ -46,7 +47,7 @@ async def test_engine():
     await engine.dispose()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def test_session(test_engine):
     """Create async session for testing."""
     async_session = sessionmaker(
@@ -118,6 +119,9 @@ async def test_cache_toggle_enabled(test_session, temp_cache_dir, monkeypatch):
     assert repo.cache_enabled is True
     assert repo._disk_cache is not None
 
+    # Close cache to release file handles
+    repo.close_cache()
+
 
 @pytest.mark.asyncio
 async def test_cache_toggle_disabled(test_session, monkeypatch):
@@ -149,6 +153,8 @@ async def test_get_odds_cache_miss_empty_db(test_session, temp_cache_dir, monkey
 
     assert odds == []
 
+    repo.close_cache()
+
 
 @pytest.mark.asyncio
 async def test_save_odds_stores_in_database(test_session, sample_odds, temp_cache_dir, monkeypatch):
@@ -173,6 +179,8 @@ async def test_save_odds_stores_in_database(test_session, sample_odds, temp_cach
     models = result.scalars().all()
 
     assert len(models) == len(sample_odds)
+
+    repo.close_cache()
 
 
 @pytest.mark.asyncio
@@ -199,6 +207,8 @@ async def test_save_odds_warms_cache(test_session, sample_odds, temp_cache_dir, 
 
     assert len(odds) == len(sample_odds)
     assert odds[0].game_id == "0022300001"
+
+    repo.close_cache()
 
 
 @pytest.mark.asyncio
@@ -253,6 +263,8 @@ async def test_save_odds_idempotent(test_session, sample_odds, temp_cache_dir, m
 
     # Should still have same count (upsert behavior)
     assert len(models) >= len(sample_odds)
+
+    repo.close_cache()
 
 
 @pytest.mark.asyncio
@@ -311,6 +323,8 @@ async def test_get_odds_for_date_range(test_session, temp_cache_dir, monkeypatch
     assert len(jan_odds) == 2
     assert all(o.game_date.month == 1 for o in jan_odds)
 
+    repo.close_cache()
+
 
 @pytest.mark.asyncio
 async def test_invalidate_cache(test_session, sample_odds, temp_cache_dir, monkeypatch):
@@ -334,6 +348,8 @@ async def test_invalidate_cache(test_session, sample_odds, temp_cache_dir, monke
 
     # Verify cache is cleared
     assert repo._disk_cache.get(cache_key) is None
+
+    repo.close_cache()
 
 
 @pytest.mark.asyncio
@@ -365,3 +381,5 @@ async def test_force_refresh_bypasses_cache(test_session, sample_odds, temp_cach
     # Should have real data from database
     assert len(odds_fresh) == len(sample_odds)
     assert odds_fresh[0].price != 999.0
+
+    repo.close_cache()

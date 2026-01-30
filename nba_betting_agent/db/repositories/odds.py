@@ -332,3 +332,13 @@ class OddsRepository:
             True if cache is enabled, False otherwise
         """
         return self._cache_enabled
+
+    def close_cache(self) -> None:
+        """Close disk cache to release file handles.
+
+        Important for Windows where open file handles prevent directory cleanup.
+        Call this in test teardown or when done with repository.
+        """
+        if self._disk_cache is not None:
+            self._disk_cache.close()
+            self._disk_cache = None
