@@ -92,30 +92,14 @@ def sample_games():
 
 @pytest.mark.asyncio
 async def test_get_games_by_season_empty_db(test_session, sample_games):
-    """Test get_by_season falls back to API when database is empty."""
+    """Test get_by_season returns empty list when database is empty."""
     repo = GamesRepository(session=test_session)
 
-    # Mock the API loader to return sample games
-    with patch("nba_betting_agent.db.repositories.games.load_historical_games") as mock_load:
-        mock_load.return_value = sample_games
+    # Call get_by_season - should return empty (no API fallback in repo)
+    games = await repo.get_by_season("2023-24")
 
-        # Call get_by_season - should trigger API fallback
-        games = await repo.get_by_season("2023-24")
-
-        # Verify API was called
-        mock_load.assert_called_once_with(["2023-24"])
-
-        # Verify games returned
-        assert len(games) == 3
-        assert games[0].game_id == "0022300001"
-        assert games[1].home_team == "GSW"
-        assert games[2].away_team == "DEN"
-
-    # Verify games were saved to database (backfill)
-    stmt = select(HistoricalGameModel).where(HistoricalGameModel.season == "2023-24")
-    result = await test_session.execute(stmt)
-    db_games = result.scalars().all()
-    assert len(db_games) == 3
+    # Verify empty list returned
+    assert len(games) == 0
 
 
 @pytest.mark.asyncio
@@ -127,18 +111,14 @@ async def test_get_games_by_season_from_db(test_session, sample_games):
     saved_count = await repo.bulk_save(sample_games)
     assert saved_count == 3
 
-    # Mock API to verify it's NOT called
-    with patch("nba_betting_agent.db.repositories.games.load_historical_games") as mock_load:
-        games = await repo.get_by_season("2023-24")
+    # Call get_by_season
+    games = await repo.get_by_season("2023-24")
 
-        # Verify API was NOT called (database hit)
-        mock_load.assert_not_called()
-
-        # Verify games returned from database
-        assert len(games) == 3
-        assert games[0].game_id == "0022300001"
-        assert games[1].home_team == "GSW"
-        assert games[2].away_score == 112
+    # Verify games returned from database
+    assert len(games) == 3
+    assert games[0].game_id == "0022300001"
+    assert games[1].home_team == "GSW"
+    assert games[2].away_score == 112
 
 
 @pytest.mark.asyncio
@@ -149,7 +129,7 @@ async def test_get_games_by_season_sorted_by_date(test_session, sample_games):
     # Save games out of order
     await repo.bulk_save([sample_games[2], sample_games[0], sample_games[1]])
 
-    games = await repo.get_by_season("2023-24", fallback_to_api=False)
+    games = await repo.get_by_season("2023-24")
 
     # Verify sorted by date
     assert len(games) == 3
@@ -186,26 +166,22 @@ async def test_graceful_degradation_no_session(sample_games):
     # Verify database marked as unavailable
     assert repo._db_available is False
 
-    # Mock API
-    with patch("nba_betting_agent.db.repositories.games.load_historical_games") as mock_load:
-        mock_load.return_value = sample_games
+    # Call get_by_season - should return empty (no API fallback in repo)
+    games = await repo.get_by_season("2023-24")
 
-        games = await repo.get_by_season("2023-24")
-
-        # Verify API fallback was used
-        mock_load.assert_called_once_with(["2023-24"])
-        assert len(games) == 3
+    # Verify empty list returned
+    assert len(games) == 0
 
 
 @pytest.mark.asyncio
 async def test_graceful_degradation_no_fallback(test_session):
-    """Test repository returns empty list when fallback disabled."""
+    """Test repository returns empty list when database empty."""
     repo = GamesRepository(session=test_session)
 
-    # Request games with fallback disabled - database empty
-    games = await repo.get_by_season("2023-24", fallback_to_api=False)
+    # Request games - database empty
+    games = await repo.get_by_season("2023-24")
 
-    # Should return empty list, not call API
+    # Should return empty list
     assert games == []
 
 
@@ -302,18 +278,14 @@ async def test_database_error_triggers_fallback(test_session, sample_games):
 
     test_session.execute = failing_execute
 
-    # Mock API fallback
-    with patch("nba_betting_agent.db.repositories.games.load_historical_games") as mock_load:
-        mock_load.return_value = sample_games
+    # Call get_by_season - should return empty (no API fallback in repo)
+    games = await repo.get_by_season("2023-24")
 
-        games = await repo.get_by_season("2023-24")
+    # Should return empty list
+    assert len(games) == 0
 
-        # Should have fallen back to API
-        mock_load.assert_called_once()
-        assert len(games) == 3
-
-        # Repository should be marked unavailable
-        assert repo._db_available is False
+    # Repository should be marked unavailable
+    assert repo._db_available is False
 
     # Restore
     test_session.execute = original_execute
@@ -354,8 +326,8 @@ async def test_multiple_seasons_distinct(test_session):
     await repo.bulk_save(season2_games)
 
     # Query each season separately
-    s1_games = await repo.get_by_season("2023-24", fallback_to_api=False)
-    s2_games = await repo.get_by_season("2022-23", fallback_to_api=False)
+    s1_games = await repo.get_by_season("2023-24")
+    s2_games = await repo.get_by_season("2022-23")
 
     assert len(s1_games) == 1
     assert len(s2_games) == 1
@@ -372,7 +344,7 @@ async def test_dataclass_model_conversion(test_session, sample_games):
     await repo.bulk_save([sample_games[0]])
 
     # Retrieve and verify fields match
-    games = await repo.get_by_season("2023-24", fallback_to_api=False)
+    games = await repo.get_by_season("2023-24")
     game = games[0]
 
     # Verify all fields converted correctly
