@@ -26,12 +26,10 @@ from nba_betting_agent.db.models import (
     model_to_odds_dataclass,
     odds_dataclass_to_model,
 )
-from nba_betting_agent.db.repositories.games import GamesRepository
-from nba_betting_agent.db.repositories.odds import OddsRepository
 from nba_betting_agent.db.session import get_database_url, get_session
 
 
-def get_games_repository(session: AsyncSession | None = None) -> GamesRepository:
+def get_games_repository(session: AsyncSession | None = None):
     """Get GamesRepository instance.
 
     If session is None, repository will use API fallback mode
@@ -43,10 +41,12 @@ def get_games_repository(session: AsyncSession | None = None) -> GamesRepository
     Returns:
         GamesRepository instance
     """
+    # Lazy import to avoid circular dependency
+    from nba_betting_agent.db.repositories.games import GamesRepository
     return GamesRepository(session)
 
 
-def get_odds_repository(session: AsyncSession | None = None) -> OddsRepository:
+def get_odds_repository(session: AsyncSession | None = None):
     """Get OddsRepository instance.
 
     If session is None, repository will use cache-only mode
@@ -58,6 +58,8 @@ def get_odds_repository(session: AsyncSession | None = None) -> OddsRepository:
     Returns:
         OddsRepository instance
     """
+    # Lazy import to avoid circular dependency
+    from nba_betting_agent.db.repositories.odds import OddsRepository
     return OddsRepository(session)
 
 
@@ -86,6 +88,4 @@ __all__ = [
     "get_games_repository",
     "get_odds_repository",
     "init_database",
-    "GamesRepository",
-    "OddsRepository",
 ]
