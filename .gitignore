@@ -1,2 +1,38 @@
 # Planning docs (local only)
 .planning/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment & secrets
+.env
+.env.*
+
+# Database
+*.db
+
+# Models & cache
+.models/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude
+.claude/
+
+# Node (dashboard)
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.vite/
+
+# OS
+nul
+Thumbs.db
+.DS_Store

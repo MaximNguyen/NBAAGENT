@@ -37,6 +37,7 @@ from nba_betting_agent.agents.analysis_agent.sharp_comparison import (
 )
 from nba_betting_agent.agents.analysis_agent.rlm_detector import detect_rlm
 from nba_betting_agent.agents.analysis_agent.clv_tracker import CLVTracker
+from nba_betting_agent.agents.analysis_agent.llm_analyzer import LLMAnalyzer
 from nba_betting_agent.agents.lines_agent.models import Market, Outcome
 from nba_betting_agent.monitoring import get_logger
 
@@ -631,6 +632,54 @@ async def analyze_bets(
             errors.append(f"Game analysis failed for {game.get('id', 'unknown')}: {e}")
             continue
 
+    # Run LLM matchup analysis if enabled
+    if use_llm and opportunities:
+        try:
+            llm = LLMAnalyzer()
+            log.info("llm_analysis_started", provider=llm.model)
+            # Analyze each unique game that has opportunities
+            analyzed_games = set()
+            for opp in opportunities:
+                if opp.game_id in analyzed_games:
+                    continue
+                analyzed_games.add(opp.game_id)
+                try:
+                    # Find the game data
+                    game = next((g for g in odds_data if g.get("id") == opp.game_id), None)
+                    if not game:
+                        continue
+                    home_team = game.get("home_team", "")
+                    away_team = game.get("away_team", "")
+                    game_date = game.get("commence_time", "")[:10]
+                    matchup_result = llm.analyze_matchup(
+                        home_team=home_team,
+                        away_team=away_team,
+                        game_date=game_date,
+                        team_stats=team_stats,
+                        injuries=injuries,
+                        odds_data=[game],
+                    )
+                    # Attach insight to all opportunities for this game
+                    insight = matchup_result.biggest_edge or matchup_result.contrarian_angle
+                    if insight:
+                        for o in opportunities:
+                            if o.game_id == opp.game_id:
+                                o.llm_insight = insight
+                    analysis_notes.append(
+                        f"LLM analysis ({llm.model}): {home_team} vs {away_team} - {matchup_result.biggest_edge}"
+                    )
+                    log.info(
+                        "llm_matchup_analyzed",
+                        game_id=opp.game_id,
+                        tokens=matchup_result.tokens_used,
+                    )
+                except Exception as e:
+                    log.warning("llm_matchup_failed", game_id=opp.game_id, error=str(e))
+                    errors.append(f"LLM analysis failed for {opp.game_id}: {e}")
+        except Exception as e:
+            log.warning("llm_init_failed", error=str(e))
+            errors.append(f"LLM initialization failed: {e}")
+
     # Sort opportunities by EV descending
     opportunities.sort(key=lambda x: x.ev_pct, reverse=True)
 
@@ -718,7 +767,7 @@ def analysis_agent_impl(state: dict) -> dict:
     # Run async analysis in thread pool (same pattern as Lines/Stats agents)
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(
-            asyncio.run, analyze_bets(odds_data, team_stats, injuries, min_ev_pct=min_ev_pct)
+            asyncio.run, analyze_bets(odds_data, team_stats, injuries, min_ev_pct=min_ev_pct, use_llm=True)
         )
         result = future.result(timeout=60)
 

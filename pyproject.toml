@@ -39,9 +39,15 @@ dev = [
     "pytest-freezegun>=0.4.2",
     "ollama>=0.4.0",
 ]
+api = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "websockets>=12.0",
+]
 
 [project.scripts]
 nba-ev = "nba_betting_agent.cli.main:main"
+nba-dashboard = "nba_betting_agent.api.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
