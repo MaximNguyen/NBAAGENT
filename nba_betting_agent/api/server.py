@@ -7,8 +7,8 @@ import uvicorn
 
 def main():
     """Start the NBA Dashboard API server."""
-    host = os.getenv("DASHBOARD_HOST", "127.0.0.1")
-    port = int(os.getenv("DASHBOARD_PORT", "8000"))
+    host = os.getenv("DASHBOARD_HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", os.getenv("DASHBOARD_PORT", "8000")))
     reload = os.getenv("DASHBOARD_RELOAD", "false").lower() == "true"
 
     # Load .env if available
