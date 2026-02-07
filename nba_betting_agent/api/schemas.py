@@ -6,6 +6,23 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+# --- Auth ---
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    password: str = Field(..., min_length=1, max_length=72)  # bcrypt truncates at 72 bytes
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=1, max_length=4096)
+
+
 # --- Health ---
 
 class HealthResponse(BaseModel):
@@ -44,10 +61,10 @@ class OpportunitiesListResponse(BaseModel):
 # --- Analysis ---
 
 class AnalysisRunRequest(BaseModel):
-    query: str = "find best bets tonight"
-    min_ev: Optional[float] = None
-    confidence: Optional[str] = None
-    limit: Optional[int] = None
+    query: str = Field(default="find best bets tonight", min_length=1, max_length=500)
+    min_ev: Optional[float] = Field(default=None, ge=-1.0, le=1.0)
+    confidence: Optional[str] = Field(default=None, max_length=20)
+    limit: Optional[int] = Field(default=None, ge=1, le=100)
 
 
 class AnalysisRunResponse(BaseModel):

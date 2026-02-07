@@ -1,103 +1,177 @@
 """Authentication for the dashboard API.
 
-Simple JWT-based auth with a single hardcoded user.
+PyJWT-based authentication with bcrypt password hashing.
+Supports access tokens (short-lived) and refresh tokens (long-lived).
 """
 
-import hashlib
-import hmac
-import json
-import os
-import time
-from base64 import urlsafe_b64decode, urlsafe_b64encode
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
-from fastapi import Depends, HTTPException, WebSocket, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
+from jwt.exceptions import InvalidTokenError
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from passlib.context import CryptContext
 
-# --- Credentials ---
-_USERNAME = "admin"
-_PASSWORD_HASH = hashlib.sha256(b"Maxim03").hexdigest()
+from nba_betting_agent.api.config import Settings, get_settings
 
-# --- JWT-like token (HMAC-SHA256, no external dep) ---
-_SECRET = os.getenv("DASHBOARD_SECRET", "nba-ev-dashboard-secret-k3y-2026")
-_TOKEN_EXPIRY = 60 * 60 * 24 * 7  # 7 days
+# OAuth2 scheme for Bearer token extraction
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-_bearer_scheme = HTTPBearer()
+# Password hashing context with bcrypt
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
 
-def _b64e(data: bytes) -> str:
-    return urlsafe_b64encode(data).rstrip(b"=").decode()
+def create_access_token(username: str, settings: Settings) -> str:
+    """Create a short-lived access token for API authentication.
 
+    Args:
+        username: The username to encode in the token
+        settings: Application settings containing JWT secret and configuration
 
-def _b64d(s: str) -> bytes:
-    padding = 4 - len(s) % 4
-    return urlsafe_b64decode(s + "=" * padding)
+    Returns:
+        Encoded JWT access token string
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.access_token_expire_minutes)
 
+    payload = {
+        "sub": username,
+        "exp": expire,
+        "iat": now,
+        "type": "access"
+    }
 
-def _sign(payload: str) -> str:
-    return hmac.new(_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-
-
-def verify_credentials(username: str, password: str) -> bool:
-    """Check username/password against stored credentials."""
-    if username != _USERNAME:
-        return False
-    return hmac.compare_digest(
-        hashlib.sha256(password.encode()).hexdigest(),
-        _PASSWORD_HASH,
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm
     )
 
 
-def create_token(username: str) -> str:
-    """Create a signed JWT-like token."""
-    payload = json.dumps({
+def create_refresh_token(username: str, settings: Settings) -> str:
+    """Create a long-lived refresh token for obtaining new access tokens.
+
+    Args:
+        username: The username to encode in the token
+        settings: Application settings containing JWT secret and configuration
+
+    Returns:
+        Encoded JWT refresh token string
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=settings.refresh_token_expire_days)
+
+    payload = {
         "sub": username,
-        "exp": int(time.time()) + _TOKEN_EXPIRY,
-    })
-    encoded = _b64e(payload.encode())
-    signature = _sign(encoded)
-    return f"{encoded}.{signature}"
+        "exp": expire,
+        "iat": now,
+        "type": "refresh"
+    }
+
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm
+    )
 
 
-def decode_token(token: str) -> Optional[str]:
-    """Decode and verify a token. Returns username or None."""
-    try:
-        parts = token.split(".")
-        if len(parts) != 2:
-            return None
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against a bcrypt hash.
 
-        encoded, signature = parts
+    Args:
+        plain_password: The plain text password to verify
+        hashed_password: The bcrypt hash to compare against
 
-        # Verify signature
-        if not hmac.compare_digest(_sign(encoded), signature):
-            return None
+    Returns:
+        True if password matches, False otherwise
+    """
+    return pwd_context.verify(plain_password, hashed_password)
 
-        # Decode payload
-        payload = json.loads(_b64d(encoded))
 
-        # Check expiry
-        if payload.get("exp", 0) < time.time():
-            return None
+def get_password_hash(password: str) -> str:
+    """Generate a bcrypt hash for a password.
 
-        return payload.get("sub")
-    except Exception:
-        return None
+    Utility function for generating password hashes.
+
+    Args:
+        password: The plain text password to hash
+
+    Returns:
+        Bcrypt hash string
+    """
+    return pwd_context.hash(password)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    token: Annotated[str, Depends(oauth2_scheme)],
+    settings: Annotated[Settings, Depends(get_settings)]
 ) -> str:
-    """FastAPI dependency: extract and validate the Bearer token."""
-    username = decode_token(credentials.credentials)
-    if username is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
+    """FastAPI dependency: Extract and validate access token from Authorization header.
+
+    Args:
+        token: Bearer token extracted from Authorization header
+        settings: Application settings for JWT verification
+
+    Returns:
+        Username from token
+
+    Raises:
+        HTTPException: 401 if token is invalid, expired, or not an access token
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm]
         )
-    return username
+
+        username: str | None = payload.get("sub")
+        token_type: str | None = payload.get("type")
+
+        if username is None or token_type != "access":
+            raise credentials_exception
+
+        return username
+
+    except InvalidTokenError:
+        raise credentials_exception
 
 
-def verify_ws_token(token: str) -> Optional[str]:
-    """Verify a token from WebSocket query param. Returns username or None."""
-    return decode_token(token)
+def verify_ws_token(token: str) -> str | None:
+    """Verify a token from WebSocket query parameter.
+
+    Used for WebSocket authentication where standard dependency injection
+    is not available. Returns username or None on any error.
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Username if token is valid and is an access token, None otherwise
+    """
+    try:
+        settings = get_settings()
+
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm]
+        )
+
+        username: str | None = payload.get("sub")
+        token_type: str | None = payload.get("type")
+
+        if username is None or token_type != "access":
+            return None
+
+        return username
+
+    except Exception:
+        return None
