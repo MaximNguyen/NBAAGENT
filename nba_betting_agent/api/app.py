@@ -1,6 +1,5 @@
 """FastAPI application factory."""
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,15 +9,19 @@ from fastapi.staticfiles import StaticFiles
 
 from nba_betting_agent import __version__
 from nba_betting_agent.api.auth import get_current_user
+from nba_betting_agent.api.config import get_settings
 from nba_betting_agent.api.routers import auth, health
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown hooks."""
+    # Validate configuration at startup (crashes if secrets missing)
+    settings = get_settings()
+
     from nba_betting_agent.monitoring import configure_logging
 
-    log_mode = os.getenv("LOG_MODE", "development")
+    log_mode = settings.environment
     configure_logging(log_mode)
     yield
 
