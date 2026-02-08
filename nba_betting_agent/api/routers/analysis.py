@@ -5,7 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Path
 
 from nba_betting_agent.api.schemas import (
     AnalysisRunRequest,
@@ -150,7 +150,7 @@ async def get_latest_analysis():
 
 
 @router.get("/analysis/{run_id}", response_model=AnalysisStatusResponse)
-async def get_analysis_status(run_id: str):
+async def get_analysis_status(run_id: str = Path(..., max_length=100)):
     """Get the status and results of an analysis run."""
     run = analysis_store.get_run(run_id)
     if not run:

@@ -1,6 +1,6 @@
 """Odds comparison endpoints."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path
 
 from nba_betting_agent.api.schemas import OddsComparisonResponse, OddsOutcome
 from nba_betting_agent.api.state import analysis_store
@@ -9,7 +9,7 @@ router = APIRouter(tags=["odds"])
 
 
 @router.get("/odds/{game_id}/comparison", response_model=OddsComparisonResponse)
-async def get_odds_comparison(game_id: str):
+async def get_odds_comparison(game_id: str = Path(..., max_length=100)):
     """Get cross-book odds comparison matrix for a game.
 
     Rows = outcomes, columns = sportsbooks, best odds highlighted.
