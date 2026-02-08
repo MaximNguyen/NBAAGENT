@@ -29,8 +29,7 @@ def _run_analysis_sync(run_id: str, query: str, min_ev: float, confidence: Optio
     if not run:
         return
 
-    run.status = "running"
-    run.started_at = time.time()
+    analysis_store.update_run_status(run_id, "running", started_at=time.time())
 
     try:
         # Parse the query (reuse CLI parser)
@@ -67,7 +66,7 @@ def _run_analysis_sync(run_id: str, query: str, min_ev: float, confidence: Optio
         }
 
         # Track steps
-        run.current_step = "lines_agent"
+        analysis_store.update_run(run_id, current_step="lines_agent")
 
         # Invoke the graph (same as CLI)
         result = invoke_with_tracing(
@@ -80,17 +79,19 @@ def _run_analysis_sync(run_id: str, query: str, min_ev: float, confidence: Optio
             },
         )
 
-        run.result = result
-        run.errors = result.get("errors", [])
-        run.status = "completed"
-        run.current_step = None
+        analysis_store.update_run_status(
+            run_id, "completed",
+            result=result, errors=result.get("errors", []), current_step=None,
+            completed_at=time.time(),
+        )
 
     except Exception as e:
-        run.status = "error"
-        run.errors.append(str(e))
-        run.current_step = None
-    finally:
-        run.completed_at = time.time()
+        run = analysis_store.get_run(run_id)
+        errors = run.errors + [str(e)] if run else [str(e)]
+        analysis_store.update_run_status(
+            run_id, "error",
+            errors=errors, current_step=None, completed_at=time.time(),
+        )
 
 
 @router.post("/analysis/run", response_model=AnalysisRunResponse)
