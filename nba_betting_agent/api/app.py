@@ -7,12 +7,16 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from nba_betting_agent import __version__
 from nba_betting_agent.api.auth import get_current_user
 from nba_betting_agent.api.config import get_settings
 from nba_betting_agent.api.middleware import (
     RequestLoggingMiddleware,
     SecurityHeadersMiddleware,
+    limiter,
 )
 from nba_betting_agent.api.routers import auth, health
 
@@ -38,6 +42,10 @@ def create_app() -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
+
+    # Register rate limiter
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # Middleware stack (runs in REVERSE order of registration)
     # Last added = first executed

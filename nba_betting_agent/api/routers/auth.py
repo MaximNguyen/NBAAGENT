@@ -4,7 +4,7 @@ from typing import Annotated
 
 import jwt
 from jwt.exceptions import InvalidTokenError
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from nba_betting_agent.api.auth import (
     create_access_token,
@@ -12,20 +12,24 @@ from nba_betting_agent.api.auth import (
     verify_password,
 )
 from nba_betting_agent.api.config import Settings, get_settings
+from nba_betting_agent.api.middleware.rate_limit import limiter
 from nba_betting_agent.api.schemas import LoginRequest, RefreshRequest, TokenResponse
 
 router = APIRouter(tags=["auth"])
 
 
 @router.post("/auth/login", response_model=TokenResponse)
+@limiter.limit("5/15minutes")
 async def login(
-    request: LoginRequest,
+    request: Request,
+    credentials: LoginRequest,
     settings: Annotated[Settings, Depends(get_settings)]
 ):
     """Authenticate with username and password, receive access and refresh tokens.
 
     Args:
-        request: Login credentials (username and password)
+        request: FastAPI request object (required for rate limiting)
+        credentials: Login credentials (username and password)
         settings: Application settings with password hash
 
     Returns:
@@ -35,7 +39,7 @@ async def login(
         HTTPException: 401 if credentials are invalid
     """
     # Verify password against stored bcrypt hash
-    if not verify_password(request.password, settings.dashboard_password_hash):
+    if not verify_password(credentials.password, settings.dashboard_password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
