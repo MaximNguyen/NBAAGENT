@@ -8,13 +8,30 @@ from concurrent.futures import ThreadPoolExecutor
 from queue import Empty, Queue
 from typing import Optional
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from nba_betting_agent.api.auth import verify_ws_token
 from nba_betting_agent.api.state import analysis_store
 
 router = APIRouter(tags=["websocket"])
 _ws_executor = ThreadPoolExecutor(max_workers=2)
+
+
+def extract_token_from_protocol(websocket: WebSocket) -> str | None:
+    """Extract JWT from Sec-WebSocket-Protocol header.
+
+    Client sends: Sec-WebSocket-Protocol: jwt.token.<base64_jwt>
+    The JWT itself contains dots, so rejoin everything after the "jwt.token." prefix.
+    """
+    protocol = websocket.headers.get("sec-websocket-protocol")
+    if not protocol:
+        return None
+
+    prefix = "jwt.token."
+    if not protocol.startswith(prefix):
+        return None
+
+    return protocol[len(prefix):]
 
 
 class ConnectionManager:
@@ -37,7 +54,9 @@ class ConnectionManager:
         if len(self.active_connections[username]) >= self.max_per_user:
             await websocket.close(code=4003, reason="Maximum concurrent connections exceeded")
             return False
-        await websocket.accept()
+        # Echo subprotocol on accept (required by WebSocket spec)
+        protocol = websocket.headers.get("sec-websocket-protocol")
+        await websocket.accept(subprotocol=protocol)
         self.active_connections[username].append(websocket)
         return True
 
@@ -188,10 +207,10 @@ def _run_streaming_analysis(
 
 
 @router.websocket("/ws/analysis/{run_id}")
-async def websocket_analysis(websocket: WebSocket, run_id: str, token: str = Query(...)):
+async def websocket_analysis(websocket: WebSocket, run_id: str):
     """WebSocket for real-time analysis progress.
 
-    Requires ?token=<jwt> query parameter for authentication.
+    Authenticates via Sec-WebSocket-Protocol header with format: jwt.token.<jwt>
 
     Message protocol:
         {"type": "status", "status": "running", "step": "lines_agent"}
@@ -200,7 +219,12 @@ async def websocket_analysis(websocket: WebSocket, run_id: str, token: str = Que
         {"type": "complete", "total_opportunities": 5, "duration_ms": 12500}
         {"type": "error", "message": "..."}
     """
-    # Validate token before accepting
+    # Extract and validate token from Sec-WebSocket-Protocol header
+    token = extract_token_from_protocol(websocket)
+    if not token:
+        await websocket.close(code=4001, reason="Missing or invalid protocol header")
+        return
+
     username = verify_ws_token(token)
     if not username:
         await websocket.close(code=4001, reason="Unauthorized")

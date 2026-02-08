@@ -42,9 +42,9 @@ export function useAnalysisWebSocket({
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
     const token = localStorage.getItem("nba_dashboard_token") ?? "";
-    const url = `${protocol}//${host}/ws/analysis/${runId}?token=${encodeURIComponent(token)}`;
+    const url = `${protocol}//${host}/ws/analysis/${runId}`;
 
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, `jwt.token.${token}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
