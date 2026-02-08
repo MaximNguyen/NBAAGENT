@@ -10,6 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from nba_betting_agent import __version__
 from nba_betting_agent.api.auth import get_current_user
 from nba_betting_agent.api.config import get_settings
+from nba_betting_agent.api.middleware import (
+    RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
+)
 from nba_betting_agent.api.routers import auth, health
 
 
@@ -35,7 +39,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS for dev frontend + production domain
+    # Middleware stack (runs in REVERSE order of registration)
+    # Last added = first executed
+
+    # 3. Request logging (executes last, captures final response)
+    app.add_middleware(RequestLoggingMiddleware)
+
+    # 2. Security headers (executes second, adds headers to response)
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # 1. CORS (executes first, handles preflight + sets CORS headers)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -46,8 +59,8 @@ def create_app() -> FastAPI:
             "https://www.sportagent.lol",
         ],
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     # Public routes (no auth required)
