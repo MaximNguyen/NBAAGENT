@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 5 of 5 (Deployment & Supply Chain Security)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-08 — Completed 05-01-PLAN.md (Docker Hardening)
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 — Completed 05-02-PLAN.md (Supply Chain Security)
 
-Progress: [████████████░░░░░░░░░░░░] 50% of Phase 5 (1/2 plans complete)
+Progress: [████████████████████████] 100% of Phase 5 (2/2 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 2.4 min
+- Total plans completed: 10
+- Average duration: 2.2 min
 - Total execution time: 0.37 hours
 
 **By Phase:**
@@ -31,11 +31,11 @@ Progress: [████████████░░░░░░░░░░░
 | 02 | 2/2 | 5 min | 2.5 min |
 | 03 | 2/2 | 7 min | 3.5 min |
 | 04 | 2/2 | 3 min | 1.5 min |
-| 05 | 1/2 | 2 min | 2.0 min |
+| 05 | 2/2 | 3 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 1min, 2min, 2min
-- Trend: Highly optimized execution, consistent 2-3min per plan
+- Last 5 plans: 4min, 3min, 1min, 2min, 1min
+- Trend: Highly optimized, Phase 5 matched Phase 4 efficiency (1.5min avg)
 
 *Updated after each plan completion*
 
@@ -83,6 +83,12 @@ Recent decisions affecting current work:
 - **[05-01]** HEALTHCHECK uses Python urllib (not curl/wget) to avoid additional dependencies in slim image
 - **[05-01]** Health check interval 30s with 10s start-period prevents restart loops during initialization
 - **[05-01]** Frontend assets owned by appuser via --chown on COPY instruction
+- **[05-02]** Weekly Dependabot schedule (Monday 9am ET) balances update frequency with PR noise
+- **[05-02]** 5 concurrent PR limit prevents Dependabot from flooding repository
+- **[05-02]** pip-audit runs on push to main, PRs, and weekly schedule (catches newly disclosed CVEs)
+- **[05-02]** requirements.lock includes production + api extras (FastAPI deployment) but excludes dev dependencies
+- **[05-02]** SHA256 hashes in lockfile enable supply chain integrity verification
+- **[05-02]** GitHub Actions ecosystem monitored monthly (less frequent than pip, more stable)
 
 ### Pending Todos
 
@@ -115,16 +121,20 @@ None yet.
 - Database constraints: Composite unique constraint on historical_odds matches PostgreSQL upsert operations
 - Alembic migration ready for production deployment
 
-**Phase 5 In Progress:**
+**Phase 5 Complete:**
 - Docker container hardened: non-root appuser, HEALTHCHECK monitoring /api/health
 - Container runs as appuser (not root), reducing attack surface if compromised
 - Health monitoring enables Railway automatic restart on failures
+- pip-audit CI/CD scans dependencies on push/PR/weekly schedule
+- Dependabot configured for weekly pip updates and monthly GitHub Actions updates
+- requirements.lock provides reproducible builds with SHA256 hashes
+- All deployment and supply chain security measures complete
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed Plan 05-01 (Docker Hardening) — Phase 5 in progress (1/2 plans)
-Resume file: .planning/phases/05-deployment-supply-chain/05-02-PLAN.md
+Stopped at: Completed Plan 05-02 (Supply Chain Security) — Phase 5 complete (2/2 plans)
+Resume file: All phases complete — project ready for production deployment
 
 ---
 *State initialized: 2026-02-07*
