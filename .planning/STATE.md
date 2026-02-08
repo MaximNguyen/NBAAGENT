@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Find genuine edges in NBA betting markets by comparing AI-generated probability estimates against sportsbook odds — security hardening protects this system and its users.
-**Current focus:** Phase 3 - Rate Limiting & Concurrency Safety
+**Current focus:** Phase 4 - Database & WebSocket Hardening (Phase 3 complete)
 
 ## Current Position
 
-Phase: 3 of 5 (Rate Limiting & Concurrency Safety)
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-08 — Completed 03-02-PLAN.md (Token Invalidation, Thread Safety, WebSocket Limits)
+Phase: 4 of 5 (Database & WebSocket Hardening)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-08 — Completed 04-01-PLAN.md (Database Engine Hardening)
 
-Progress: [████████████████████] 100% of Phase 3 (2/2 plans complete)
+Progress: [████████████████████░░░░] 50% of Phase 4 (1/2 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 3.0 min
+- Total plans completed: 7
+- Average duration: 2.7 min
 - Total execution time: 0.31 hours
 
 **By Phase:**
@@ -30,10 +30,11 @@ Progress: [████████████████████] 100% of
 | 01 | 2/2 | 7 min | 3.5 min |
 | 02 | 2/2 | 5 min | 2.5 min |
 | 03 | 2/2 | 7 min | 3.5 min |
+| 04 | 1/2 | 1 min | 1.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 2min, 3min, 4min, 3min
-- Trend: Consistent pace, stable execution
+- Last 5 plans: 3min, 4min, 3min, 1min
+- Trend: Accelerating - recent plan significantly faster
 
 *Updated after each plan completion*
 
@@ -69,6 +70,11 @@ Recent decisions affecting current work:
 - **[03-02]** Token blacklist cleanup on each revoke call prevents unbounded growth
 - **[03-02]** threading.Lock correct for AnalysisStore (not asyncio.Lock) because WebSocket analysis runs in ThreadPoolExecutor
 - **[03-02]** ConnectionManager enforces 2 concurrent WebSocket connections per user, rejecting excess with close code 4003
+- **[04-01]** Pool defaults (pool_size=10, max_overflow=20) balanced for Railway single-instance deployment, configurable via DB_POOL_SIZE/DB_MAX_OVERFLOW env vars
+- **[04-01]** SSL with CERT_REQUIRED only for production PostgreSQL (development SQLite and non-production PostgreSQL skip SSL)
+- **[04-01]** hide_parameters=True always enabled to prevent SQL parameter leakage in logs
+- **[04-01]** Engine factory try/except allows CLI/migration operation without JWT_SECRET_KEY/DASHBOARD_PASSWORD_HASH env vars
+- **[04-01]** asyncpg added to api optional dependencies (not base) since only dashboard connects to PostgreSQL
 
 ### Pending Todos
 
@@ -98,8 +104,8 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed Plan 03-02 (Token Invalidation, Thread Safety, WebSocket Limits) — Phase 3 complete
-Resume file: .planning/phases/04-security-hardening/ (next phase)
+Stopped at: Completed Plan 04-01 (Database Engine Hardening) — Phase 4 in progress (1/2 complete)
+Resume file: .planning/phases/04-database-websocket/04-02-PLAN.md (next plan)
 
 ---
 *State initialized: 2026-02-07*
