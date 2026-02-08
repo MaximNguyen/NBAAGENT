@@ -2,8 +2,9 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Path, Query, Request
 
+from nba_betting_agent.api.middleware.rate_limit import limiter
 from nba_betting_agent.api.schemas import OpportunitiesListResponse, OpportunityResponse
 from nba_betting_agent.api.state import analysis_store
 from nba_betting_agent.cli.filters import filter_opportunities, sort_opportunities
@@ -17,7 +18,9 @@ def _opportunity_to_response(opp) -> OpportunityResponse:
 
 
 @router.get("/opportunities", response_model=OpportunitiesListResponse)
+@limiter.limit("100/minute")
 async def list_opportunities(
+    request: Request,
     min_ev: Optional[float] = Query(None, ge=-1.0, le=1.0, description="Minimum EV % threshold"),
     max_ev: Optional[float] = Query(None, ge=-1.0, le=1.0, description="Maximum EV % threshold"),
     confidence: Optional[str] = Query(None, max_length=20, description="Confidence level: high/medium/low"),
@@ -70,7 +73,11 @@ async def list_opportunities(
 
 
 @router.get("/opportunities/{game_id}", response_model=list[OpportunityResponse])
-async def get_opportunities_for_game(game_id: str = Path(..., max_length=100)):
+@limiter.limit("100/minute")
+async def get_opportunities_for_game(
+    request: Request,
+    game_id: str = Path(..., max_length=100)
+):
     """Get all opportunities for a specific game."""
     latest = analysis_store.get_latest()
     if not latest or not latest.result:

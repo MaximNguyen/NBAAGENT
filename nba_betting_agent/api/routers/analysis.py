@@ -5,8 +5,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import APIRouter, Path
+from fastapi import APIRouter, Path, Request
 
+from nba_betting_agent.api.middleware.rate_limit import limiter
 from nba_betting_agent.api.schemas import (
     AnalysisRunRequest,
     AnalysisRunResponse,
@@ -93,12 +94,16 @@ def _run_analysis_sync(run_id: str, query: str, min_ev: float, confidence: Optio
 
 
 @router.post("/analysis/run", response_model=AnalysisRunResponse)
-async def trigger_analysis(request: AnalysisRunRequest):
+@limiter.limit("10/minute")
+async def trigger_analysis(
+    request: Request,
+    analysis_request: AnalysisRunRequest
+):
     """Trigger a new analysis pipeline run.
 
     Returns immediately with a run_id. Poll /api/analysis/{run_id} for status.
     """
-    run = analysis_store.create_run(request.query)
+    run = analysis_store.create_run(analysis_request.query)
 
     # Run in background thread (graph is sync)
     loop = asyncio.get_event_loop()
@@ -106,10 +111,10 @@ async def trigger_analysis(request: AnalysisRunRequest):
         _executor,
         _run_analysis_sync,
         run.run_id,
-        request.query,
-        request.min_ev,
-        request.confidence,
-        request.limit,
+        analysis_request.query,
+        analysis_request.min_ev,
+        analysis_request.confidence,
+        analysis_request.limit,
     )
 
     return AnalysisRunResponse(
@@ -120,7 +125,8 @@ async def trigger_analysis(request: AnalysisRunRequest):
 
 
 @router.get("/analysis/latest", response_model=AnalysisStatusResponse)
-async def get_latest_analysis():
+@limiter.limit("100/minute")
+async def get_latest_analysis(request: Request):
     """Get the most recent completed analysis run."""
     run = analysis_store.get_latest()
     if not run:
@@ -150,7 +156,11 @@ async def get_latest_analysis():
 
 
 @router.get("/analysis/{run_id}", response_model=AnalysisStatusResponse)
-async def get_analysis_status(run_id: str = Path(..., max_length=100)):
+@limiter.limit("100/minute")
+async def get_analysis_status(
+    request: Request,
+    run_id: str = Path(..., max_length=100)
+):
     """Get the status and results of an analysis run."""
     run = analysis_store.get_run(run_id)
     if not run:

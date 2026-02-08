@@ -1,16 +1,19 @@
 """Historical analytics endpoints - performance, ROI, and model accuracy."""
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nba_betting_agent.api.deps import get_db_session
+from nba_betting_agent.api.middleware.rate_limit import limiter
 from nba_betting_agent.api.schemas import ModelAccuracy, MonthlyROI, PerformanceSummary
 
 router = APIRouter(tags=["history"])
 
 
 @router.get("/history/performance", response_model=PerformanceSummary)
+@limiter.limit("100/minute")
 async def get_performance(
+    request: Request,
     season: str = Query("2023-24", max_length=10, description="NBA season (e.g., 2023-24)"),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -58,7 +61,9 @@ async def get_performance(
 
 
 @router.get("/history/monthly-roi", response_model=list[MonthlyROI])
+@limiter.limit("100/minute")
 async def get_monthly_roi(
+    request: Request,
     season: str = Query("2023-24", max_length=10, description="NBA season"),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -102,7 +107,9 @@ async def get_monthly_roi(
 
 
 @router.get("/history/model-accuracy", response_model=ModelAccuracy)
+@limiter.limit("100/minute")
 async def get_model_accuracy(
+    request: Request,
     season: str = Query("2023-24", max_length=10, description="NBA season"),
     session: AsyncSession = Depends(get_db_session),
 ):

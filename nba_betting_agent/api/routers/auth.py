@@ -61,8 +61,10 @@ async def login(
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
+@limiter.limit("30/minute")
 async def refresh(
-    request: RefreshRequest,
+    request: Request,
+    refresh_request: RefreshRequest,
     settings: Annotated[Settings, Depends(get_settings)]
 ):
     """Exchange a valid refresh token for a new access token.
@@ -80,7 +82,7 @@ async def refresh(
     try:
         # Decode and verify refresh token
         payload = jwt.decode(
-            request.refresh_token,
+            refresh_request.refresh_token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm]
         )
@@ -102,7 +104,7 @@ async def refresh(
         # Return new access token with same refresh token
         return TokenResponse(
             access_token=access_token,
-            refresh_token=request.refresh_token,
+            refresh_token=refresh_request.refresh_token,
             token_type="bearer"
         )
 

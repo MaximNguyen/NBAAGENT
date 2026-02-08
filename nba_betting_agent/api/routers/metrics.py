@@ -1,7 +1,8 @@
 """System metrics endpoints - sportsbook coverage and cache performance."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
+from nba_betting_agent.api.middleware.rate_limit import limiter
 from nba_betting_agent.api.schemas import CacheMetricsResponse, SportsbookMetricsResponse
 from nba_betting_agent.api.state import analysis_store
 
@@ -9,7 +10,8 @@ router = APIRouter(tags=["metrics"])
 
 
 @router.get("/metrics/sportsbooks", response_model=list[SportsbookMetricsResponse])
-async def get_sportsbook_metrics():
+@limiter.limit("100/minute")
+async def get_sportsbook_metrics(request: Request):
     """Get sportsbook coverage metrics from the latest analysis run."""
     latest = analysis_store.get_latest()
     if not latest or not latest.result:
@@ -52,7 +54,8 @@ async def get_sportsbook_metrics():
 
 
 @router.get("/metrics/cache", response_model=CacheMetricsResponse)
-async def get_cache_metrics():
+@limiter.limit("100/minute")
+async def get_cache_metrics(request: Request):
     """Get cache performance metrics.
 
     Returns current cache hit/miss statistics.
