@@ -12,7 +12,7 @@ This roadmap transforms a working NBA betting agent from prototype to production
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Authentication & Configuration Foundation** - Replace custom JWT/passwords with PyJWT/bcrypt, move secrets to environment
+- [x] **Phase 1: Authentication & Configuration Foundation** - Replace custom JWT/passwords with PyJWT/bcrypt, move secrets to environment ✓ 2026-02-07
 - [ ] **Phase 2: Protocol & Transport Security** - Add security headers, HTTPS enforcement, CORS tightening, request logging
 - [ ] **Phase 3: Rate Limiting & Concurrency Safety** - Implement rate limiting, fix thread-unsafe global state
 - [ ] **Phase 4: Database & WebSocket Hardening** - Configure connection pooling, SSL, secure WebSocket auth pattern
@@ -33,8 +33,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Configuration foundation: Settings class, dependency installation, FastAPI DI setup
-- [ ] 01-02-PLAN.md — Auth rewrite: PyJWT tokens, bcrypt passwords, login/refresh endpoints, tests
+- [x] 01-01-PLAN.md — Configuration foundation: Settings class, dependency installation, FastAPI DI setup ✓
+- [x] 01-02-PLAN.md — Auth rewrite: PyJWT tokens, bcrypt passwords, login/refresh endpoints, tests ✓
 
 ### Phase 2: Protocol & Transport Security
 **Goal**: All API traffic is secured with proper headers, HTTPS, and controlled CORS
@@ -46,10 +46,11 @@ Plans:
   3. All API requests are logged with timestamp, method, path, status code, duration, source IP
   4. Authorization headers and API keys are redacted from all logs
   5. All endpoints validate input with Pydantic Field() constraints
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: [TBD during planning]
+- [ ] 02-01-PLAN.md — Middleware stack: security headers, request logging, CORS tightening
+- [ ] 02-02-PLAN.md — Input validation: Query()/Path() constraints on all endpoints
 
 ### Phase 3: Rate Limiting & Concurrency Safety
 **Goal**: API is protected from abuse and concurrent access is thread-safe
@@ -104,8 +105,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Authentication & Config | 0/2 | Planning complete | - |
-| 2. Protocol & Transport | 0/TBD | Not started | - |
+| 1. Authentication & Config | 2/2 | ✓ Complete | 2026-02-07 |
+| 2. Protocol & Transport | 0/2 | Not started | - |
 | 3. Rate Limiting & Concurrency | 0/TBD | Not started | - |
 | 4. Database & WebSocket | 0/TBD | Not started | - |
 | 5. Deployment & Supply Chain | 0/TBD | Not started | - |
