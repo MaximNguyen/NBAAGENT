@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 4 of 5 (Database & WebSocket Hardening)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-08 — Completed 04-01-PLAN.md (Database Engine Hardening)
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 — Completed 04-02-PLAN.md (WebSocket Security & Database Constraints)
 
-Progress: [████████████████████░░░░] 50% of Phase 4 (1/2 plans complete)
+Progress: [████████████████████████] 100% of Phase 4 (2/2 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 2.7 min
-- Total execution time: 0.31 hours
+- Total plans completed: 8
+- Average duration: 2.6 min
+- Total execution time: 0.35 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [████████████████████░░░
 | 01 | 2/2 | 7 min | 3.5 min |
 | 02 | 2/2 | 5 min | 2.5 min |
 | 03 | 2/2 | 7 min | 3.5 min |
-| 04 | 1/2 | 1 min | 1.0 min |
+| 04 | 2/2 | 3 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 4min, 3min, 1min
-- Trend: Accelerating - recent plan significantly faster
+- Last 5 plans: 4min, 3min, 1min, 2min
+- Trend: Consistent pace, Phase 4 highly optimized
 
 *Updated after each plan completion*
 
@@ -75,6 +75,9 @@ Recent decisions affecting current work:
 - **[04-01]** hide_parameters=True always enabled to prevent SQL parameter leakage in logs
 - **[04-01]** Engine factory try/except allows CLI/migration operation without JWT_SECRET_KEY/DASHBOARD_PASSWORD_HASH env vars
 - **[04-01]** asyncpg added to api optional dependencies (not base) since only dashboard connects to PostgreSQL
+- **[04-02]** WebSocket authentication via Sec-WebSocket-Protocol header (format: jwt.token.<jwt>) instead of query parameters
+- **[04-02]** Server echoes subprotocol on WebSocket accept per WebSocket spec requirement
+- **[04-02]** Composite unique constraint (game_id, bookmaker, market, outcome, timestamp) matches repository upsert index_elements
 
 ### Pending Todos
 
@@ -91,7 +94,7 @@ None yet.
 - bcrypt/passlib compatibility: passlib 1.7.4 logs warning with bcrypt 4.x but works correctly. May need upgrade to newer passlib or direct bcrypt usage in future.
 
 **Future Phase Research:**
-- Phase 4: WebSocket Sec-WebSocket-Protocol browser compatibility (Safari/Firefox testing needed)
+- None currently
 
 **Phase 3 Complete:**
 - IP-based rate limiting with SlowAPI middleware
@@ -101,11 +104,17 @@ None yet.
 - Current implementation suitable for single Railway instance (in-memory storage)
 - If scaling to multiple instances, consider Redis backend for shared state (future optimization)
 
+**Phase 4 Complete:**
+- Database engine hardening: SSL for production PostgreSQL, connection pooling, parameter hiding in logs
+- WebSocket security: JWT authentication via Sec-WebSocket-Protocol header (prevents token logging)
+- Database constraints: Composite unique constraint on historical_odds matches PostgreSQL upsert operations
+- Alembic migration ready for production deployment
+
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed Plan 04-01 (Database Engine Hardening) — Phase 4 in progress (1/2 complete)
-Resume file: .planning/phases/04-database-websocket/04-02-PLAN.md (next plan)
+Stopped at: Completed Plan 04-02 (WebSocket Security & Database Constraints) — Phase 4 complete
+Resume file: .planning/phases/05-*/ (next phase)
 
 ---
 *State initialized: 2026-02-07*
