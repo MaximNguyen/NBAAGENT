@@ -11,7 +11,7 @@ router = APIRouter(tags=["history"])
 
 @router.get("/history/performance", response_model=PerformanceSummary)
 async def get_performance(
-    season: str = Query("2023-24", description="NBA season (e.g., 2023-24)"),
+    season: str = Query("2023-24", max_length=10, description="NBA season (e.g., 2023-24)"),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get backtest performance summary for a season.
@@ -59,7 +59,7 @@ async def get_performance(
 
 @router.get("/history/monthly-roi", response_model=list[MonthlyROI])
 async def get_monthly_roi(
-    season: str = Query("2023-24", description="NBA season"),
+    season: str = Query("2023-24", max_length=10, description="NBA season"),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get monthly ROI breakdown for a season."""
@@ -103,7 +103,7 @@ async def get_monthly_roi(
 
 @router.get("/history/model-accuracy", response_model=ModelAccuracy)
 async def get_model_accuracy(
-    season: str = Query("2023-24", description="NBA season"),
+    season: str = Query("2023-24", max_length=10, description="NBA season"),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Get ML model accuracy metrics (Brier score, calibration error)."""

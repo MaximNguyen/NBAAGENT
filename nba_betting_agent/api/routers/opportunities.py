@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 
 from nba_betting_agent.api.schemas import OpportunitiesListResponse, OpportunityResponse
 from nba_betting_agent.api.state import analysis_store
@@ -18,13 +18,13 @@ def _opportunity_to_response(opp) -> OpportunityResponse:
 
 @router.get("/opportunities", response_model=OpportunitiesListResponse)
 async def list_opportunities(
-    min_ev: Optional[float] = Query(None, description="Minimum EV % threshold"),
-    max_ev: Optional[float] = Query(None, description="Maximum EV % threshold"),
-    confidence: Optional[str] = Query(None, description="Confidence level: high/medium/low"),
-    team: Optional[str] = Query(None, description="Team code (e.g., BOS, LAL)"),
-    market: Optional[str] = Query(None, description="Market type: h2h, spreads, totals"),
-    sort_by: str = Query("ev_pct", description="Sort field"),
-    limit: Optional[int] = Query(None, description="Max results to return"),
+    min_ev: Optional[float] = Query(None, ge=-1.0, le=1.0, description="Minimum EV % threshold"),
+    max_ev: Optional[float] = Query(None, ge=-1.0, le=1.0, description="Maximum EV % threshold"),
+    confidence: Optional[str] = Query(None, max_length=20, description="Confidence level: high/medium/low"),
+    team: Optional[str] = Query(None, max_length=10, description="Team code (e.g., BOS, LAL)"),
+    market: Optional[str] = Query(None, max_length=50, description="Market type: h2h, spreads, totals"),
+    sort_by: str = Query("ev_pct", max_length=50, description="Sort field"),
+    limit: Optional[int] = Query(None, ge=1, le=100, description="Max results to return"),
 ):
     """List +EV opportunities from the latest completed analysis run."""
     latest = analysis_store.get_latest()
@@ -70,7 +70,7 @@ async def list_opportunities(
 
 
 @router.get("/opportunities/{game_id}", response_model=list[OpportunityResponse])
-async def get_opportunities_for_game(game_id: str):
+async def get_opportunities_for_game(game_id: str = Path(..., max_length=100)):
     """Get all opportunities for a specific game."""
     latest = analysis_store.get_latest()
     if not latest or not latest.result:
