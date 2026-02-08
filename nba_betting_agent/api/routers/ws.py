@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from queue import Empty, Queue
 from typing import Optional
@@ -14,6 +15,59 @@ from nba_betting_agent.api.state import analysis_store
 
 router = APIRouter(tags=["websocket"])
 _ws_executor = ThreadPoolExecutor(max_workers=2)
+
+
+class ConnectionManager:
+    """Manage WebSocket connections with per-user limits (RATE-04)."""
+
+    def __init__(self, max_per_user: int = 2):
+        self.active_connections: dict[str, list[WebSocket]] = defaultdict(list)
+        self.max_per_user = max_per_user
+
+    async def connect(self, websocket: WebSocket, username: str) -> bool:
+        """Accept connection if under limit, reject with 4003 otherwise.
+
+        Args:
+            websocket: WebSocket connection to manage
+            username: User identifier
+
+        Returns:
+            True if connection accepted, False if rejected
+        """
+        if len(self.active_connections[username]) >= self.max_per_user:
+            await websocket.close(code=4003, reason="Maximum concurrent connections exceeded")
+            return False
+        await websocket.accept()
+        self.active_connections[username].append(websocket)
+        return True
+
+    def disconnect(self, websocket: WebSocket, username: str):
+        """Remove connection from tracking.
+
+        Args:
+            websocket: WebSocket connection to remove
+            username: User identifier
+        """
+        try:
+            self.active_connections[username].remove(websocket)
+            if not self.active_connections[username]:
+                del self.active_connections[username]
+        except (ValueError, KeyError):
+            pass
+
+    def get_connection_count(self, username: str) -> int:
+        """Get current connection count for a user.
+
+        Args:
+            username: User identifier
+
+        Returns:
+            Number of active connections
+        """
+        return len(self.active_connections[username])
+
+
+connection_manager = ConnectionManager(max_per_user=2)
 
 
 def _run_streaming_analysis(
@@ -31,9 +85,8 @@ def _run_streaming_analysis(
         message_queue.put({"type": "error", "message": "Run not found"})
         return
 
-    run.status = "running"
-    run.started_at = time.time()
     start = time.time()
+    analysis_store.update_run_status(run_id, "running", started_at=start)
 
     try:
         parsed = parse_query(query)
@@ -84,7 +137,7 @@ def _run_streaming_analysis(
                     "step": agent_name,
                 })
 
-                run.current_step = agent_name
+                analysis_store.update_run(run_id, current_step=agent_name)
 
                 # If analysis node, emit opportunities
                 if node_name == "analysis" and "opportunities" in node_output:
@@ -105,11 +158,14 @@ def _run_streaming_analysis(
                 state.update(node_output)
 
         duration_ms = int((time.time() - start) * 1000)
-        run.result = state
-        run.status = "completed"
-        run.completed_at = time.time()
-        run.current_step = None
-        run.errors = state.get("errors", [])
+        analysis_store.update_run_status(
+            run_id,
+            "completed",
+            result=state,
+            completed_at=time.time(),
+            current_step=None,
+            errors=state.get("errors", [])
+        )
 
         opp_count = len(state.get("opportunities", []))
         message_queue.put({
@@ -119,10 +175,15 @@ def _run_streaming_analysis(
         })
 
     except Exception as e:
-        run.status = "error"
-        run.errors.append(str(e))
-        run.completed_at = time.time()
-        run.current_step = None
+        run = analysis_store.get_run(run_id)
+        errors = run.errors + [str(e)] if run else [str(e)]
+        analysis_store.update_run_status(
+            run_id,
+            "error",
+            errors=errors,
+            completed_at=time.time(),
+            current_step=None
+        )
         message_queue.put({"type": "error", "message": str(e)})
 
 
@@ -145,61 +206,66 @@ async def websocket_analysis(websocket: WebSocket, run_id: str, token: str = Que
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
-    await websocket.accept()
-
-    run = analysis_store.get_run(run_id)
-    if not run:
-        await websocket.send_json({"type": "error", "message": f"Run {run_id} not found"})
-        await websocket.close()
-        return
-
-    # If run is already completed, send results immediately
-    if run.status == "completed":
-        opp_count = len(run.result.get("opportunities", [])) if run.result else 0
-        await websocket.send_json({
-            "type": "complete",
-            "total_opportunities": opp_count,
-            "duration_ms": run.duration_ms,
-        })
-        await websocket.close()
-        return
-
-    # Start streaming analysis in background thread
-    message_queue: Queue = Queue()
-
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(
-        _ws_executor,
-        _run_streaming_analysis,
-        run_id,
-        run.query,
-        None,
-        message_queue,
-    )
+    # Check connection limit and accept/reject
+    connected = await connection_manager.connect(websocket, username)
+    if not connected:
+        return  # Rejected due to limit (close code 4003 sent by manager)
 
     try:
-        # Relay messages from queue to WebSocket
-        while True:
-            try:
-                msg = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: message_queue.get(timeout=0.5)
-                )
-                await websocket.send_json(msg)
+        run = analysis_store.get_run(run_id)
+        if not run:
+            await websocket.send_json({"type": "error", "message": f"Run {run_id} not found"})
+            await websocket.close()
+            return
 
-                # Close on terminal messages
-                if msg.get("type") in ("complete", "error"):
-                    break
+        # If run is already completed, send results immediately
+        if run.status == "completed":
+            opp_count = len(run.result.get("opportunities", [])) if run.result else 0
+            await websocket.send_json({
+                "type": "complete",
+                "total_opportunities": opp_count,
+                "duration_ms": run.duration_ms,
+            })
+            await websocket.close()
+            return
 
-            except Empty:
-                # Send heartbeat
+        # Start streaming analysis in background thread
+        message_queue: Queue = Queue()
+
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(
+            _ws_executor,
+            _run_streaming_analysis,
+            run_id,
+            run.query,
+            None,
+            message_queue,
+        )
+
+        try:
+            # Relay messages from queue to WebSocket
+            while True:
                 try:
-                    await websocket.send_json({"type": "heartbeat"})
-                except Exception:
-                    break
+                    msg = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: message_queue.get(timeout=0.5)
+                    )
+                    await websocket.send_json(msg)
 
-    except WebSocketDisconnect:
-        pass
+                    # Close on terminal messages
+                    if msg.get("type") in ("complete", "error"):
+                        break
+
+                except Empty:
+                    # Send heartbeat
+                    try:
+                        await websocket.send_json({"type": "heartbeat"})
+                    except Exception:
+                        break
+
+        except WebSocketDisconnect:
+            pass
     finally:
+        connection_manager.disconnect(websocket, username)
         try:
             await websocket.close()
         except Exception:

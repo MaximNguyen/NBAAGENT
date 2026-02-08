@@ -69,6 +69,36 @@ class AnalysisStore:
         with self._lock:
             return [self._runs[rid] for rid in self._order if rid in self._runs]
 
+    def update_run_status(self, run_id: str, status: str, **kwargs):
+        """Update run status and optional attributes atomically under lock.
+
+        Args:
+            run_id: The run identifier
+            status: New status value
+            **kwargs: Additional attributes to update (started_at, completed_at, etc.)
+        """
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run:
+                run.status = status
+                for key, value in kwargs.items():
+                    if hasattr(run, key):
+                        setattr(run, key, value)
+
+    def update_run(self, run_id: str, **kwargs):
+        """Update run attributes atomically under lock.
+
+        Args:
+            run_id: The run identifier
+            **kwargs: Attributes to update
+        """
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run:
+                for key, value in kwargs.items():
+                    if hasattr(run, key):
+                        setattr(run, key, value)
+
 
 # Global singleton
 analysis_store = AnalysisStore()
