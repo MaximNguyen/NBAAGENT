@@ -31,8 +31,8 @@ class Settings(BaseSettings):
         description="Secret key for JWT signing. Generate with: openssl rand -hex 32"
     )
     dashboard_password_hash: str = Field(
-        ...,
-        description="Bcrypt hash of dashboard password"
+        default="",
+        description="Bcrypt hash of dashboard password (legacy single-user, optional)"
     )
 
     # Optional settings with defaults
@@ -40,6 +40,20 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=60, ge=5, le=1440)
     refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
     environment: str = Field(default="development")
+
+    # Google OAuth
+    google_client_id: str = Field(default="", description="Google OAuth2 client ID")
+    google_client_secret: str = Field(default="", description="Google OAuth2 client secret")
+
+    # Email (Resend)
+    resend_api_key: str = Field(default="", description="Resend API key for email sending")
+    resend_from_email: str = Field(default="noreply@sportagent.lol", description="From address for emails")
+
+    # Frontend
+    frontend_url: str = Field(default="http://localhost:5173", description="Frontend URL for email links")
+
+    # Email verification
+    email_verification_token_expire_hours: int = Field(default=24, ge=1, le=168)
 
     # Database pool configuration
     db_pool_size: int = Field(

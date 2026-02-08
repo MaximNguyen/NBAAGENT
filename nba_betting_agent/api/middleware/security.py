@@ -32,12 +32,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Content Security Policy
         # - default-src 'self': Only load resources from same origin
-        # - script-src/style-src: Allow self + cdn.jsdelivr.net for Swagger UI
+        # - script-src/style-src: Allow self + cdn.jsdelivr.net (Swagger) + accounts.google.com (OAuth)
+        # - frame-src: Allow Google OAuth popup/redirect
+        # - connect-src: Allow Google token verification
         # - frame-ancestors 'none': Prevent framing (redundant with X-Frame-Options)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://cdn.jsdelivr.net; "
-            "style-src 'self' https://cdn.jsdelivr.net; "
+            "script-src 'self' https://cdn.jsdelivr.net https://accounts.google.com; "
+            "style-src 'self' https://cdn.jsdelivr.net https://accounts.google.com; "
+            "frame-src https://accounts.google.com; "
+            "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com; "
             "frame-ancestors 'none'"
         )
 

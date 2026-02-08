@@ -7,7 +7,7 @@ Includes converter functions to transform between models and frozen dataclasses.
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Index, UniqueConstraint, Boolean, DateTime, Float, Integer, String
+from sqlalchemy import Index, UniqueConstraint, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 if TYPE_CHECKING:
@@ -18,6 +18,40 @@ class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
 
     pass
+
+
+class UserModel(Base):
+    """SQLAlchemy model for application users.
+
+    Supports both email+password and Google OAuth authentication.
+    password_hash is nullable (Google-only users don't set passwords).
+    google_id is nullable (email-only users don't link Google initially).
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class AuditLogModel(Base):
+    """SQLAlchemy model for admin audit log entries."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    admin_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HistoricalGameModel(Base):

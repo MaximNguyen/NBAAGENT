@@ -9,8 +9,26 @@ from pydantic import BaseModel, Field
 # --- Auth ---
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., min_length=1, max_length=50)
+    email: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=72)  # bcrypt truncates at 72 bytes
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+    password: str = Field(..., min_length=8, max_length=72)
+    display_name: str | None = Field(default=None, max_length=255)
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str = Field(..., min_length=1, max_length=8192)
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=4096)
+
+
+class MessageResponse(BaseModel):
+    message: str
 
 
 class TokenResponse(BaseModel):
@@ -145,3 +163,48 @@ class ModelAccuracy(BaseModel):
     calibration_error: float = 0.0
     clv_pct: Optional[float] = None
     total_predictions: int = 0
+
+
+# --- Admin ---
+
+class UserAdminResponse(BaseModel):
+    id: str
+    email: str
+    display_name: Optional[str] = None
+    role: str
+    email_verified: bool
+    has_google: bool
+    created_at: str
+
+
+class UserListResponse(BaseModel):
+    users: list[UserAdminResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+class UpdateUserRoleRequest(BaseModel):
+    role: str = Field(..., pattern=r"^(user|admin)$")
+
+
+class SystemStatsResponse(BaseModel):
+    total_users: int
+    verified_users: int
+    google_users: int
+    signups_today: int
+    signups_this_week: int
+
+
+class AuditLogEntry(BaseModel):
+    id: int
+    timestamp: str
+    admin_id: str
+    action: str
+    target_id: Optional[str] = None
+    details: Optional[str] = None
+
+
+class AuditLogResponse(BaseModel):
+    entries: list[AuditLogEntry]
+    total: int

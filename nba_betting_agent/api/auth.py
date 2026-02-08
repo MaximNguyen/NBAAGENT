@@ -1,14 +1,17 @@
 """Authentication for the dashboard API.
 
 PyJWT-based authentication with bcrypt password hashing.
-Supports access tokens (short-lived) and refresh tokens (long-lived).
+Supports access tokens (short-lived), refresh tokens (long-lived),
+email verification tokens, and Google OAuth ID token verification.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 import time
 import uuid
 
+import httpx
 import jwt
 from jwt.exceptions import InvalidTokenError
 from fastapi import Depends, HTTPException, status
@@ -16,6 +19,8 @@ from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 
 from nba_betting_agent.api.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 # OAuth2 scheme for Bearer token extraction
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -66,12 +71,21 @@ def is_token_revoked(jti: str) -> bool:
     return True
 
 
-def create_access_token(username: str, settings: Settings) -> str:
+def create_access_token(
+    user_id: str,
+    settings: Settings,
+    email: str | None = None,
+    display_name: str | None = None,
+    role: str | None = None,
+) -> str:
     """Create a short-lived access token for API authentication.
 
     Args:
-        username: The username to encode in the token
+        user_id: User ID (UUID) to encode as the subject
         settings: Application settings containing JWT secret and configuration
+        email: Optional email to include as a claim
+        display_name: Optional display name to include as a claim
+        role: Optional user role to include as a claim
 
     Returns:
         Encoded JWT access token string
@@ -79,26 +93,32 @@ def create_access_token(username: str, settings: Settings) -> str:
     now = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=settings.access_token_expire_minutes)
 
-    payload = {
-        "sub": username,
+    payload: dict = {
+        "sub": user_id,
         "exp": expire,
         "iat": now,
         "type": "access",
-        "jti": uuid.uuid4().hex
+        "jti": uuid.uuid4().hex,
     }
+    if email:
+        payload["email"] = email
+    if display_name:
+        payload["display_name"] = display_name
+    if role:
+        payload["role"] = role
 
     return jwt.encode(
         payload,
         settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm
+        algorithm=settings.jwt_algorithm,
     )
 
 
-def create_refresh_token(username: str, settings: Settings) -> str:
+def create_refresh_token(user_id: str, settings: Settings) -> str:
     """Create a long-lived refresh token for obtaining new access tokens.
 
     Args:
-        username: The username to encode in the token
+        user_id: User ID (UUID) to encode as the subject
         settings: Application settings containing JWT secret and configuration
 
     Returns:
@@ -108,18 +128,107 @@ def create_refresh_token(username: str, settings: Settings) -> str:
     expire = now + timedelta(days=settings.refresh_token_expire_days)
 
     payload = {
-        "sub": username,
+        "sub": user_id,
         "exp": expire,
         "iat": now,
         "type": "refresh",
-        "jti": uuid.uuid4().hex
+        "jti": uuid.uuid4().hex,
     }
 
     return jwt.encode(
         payload,
         settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm
+        algorithm=settings.jwt_algorithm,
     )
+
+
+def create_email_verification_token(user_id: str, settings: Settings) -> str:
+    """Create a token for email verification.
+
+    Args:
+        user_id: User ID to encode in the token
+        settings: Application settings
+
+    Returns:
+        Encoded JWT token string
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(hours=settings.email_verification_token_expire_hours)
+
+    payload = {
+        "sub": user_id,
+        "exp": expire,
+        "iat": now,
+        "type": "email_verification",
+    }
+
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def verify_email_token(token: str, settings: Settings) -> str | None:
+    """Verify an email verification token and return the user_id.
+
+    Returns None if token is invalid or expired.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
+
+        user_id: str | None = payload.get("sub")
+        token_type: str | None = payload.get("type")
+
+        if user_id is None or token_type != "email_verification":
+            return None
+
+        return user_id
+    except InvalidTokenError:
+        return None
+
+
+async def verify_google_id_token(id_token: str, settings: Settings) -> dict | None:
+    """Verify a Google ID token using Google's tokeninfo endpoint.
+
+    Returns dict with {sub, email, name, email_verified} or None on failure.
+    """
+    if not settings.google_client_id:
+        logger.error("GOOGLE_CLIENT_ID not configured")
+        return None
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"id_token": id_token},
+                timeout=10.0,
+            )
+
+            if resp.status_code != 200:
+                logger.warning("Google token verification failed: %d", resp.status_code)
+                return None
+
+            data = resp.json()
+
+            # Verify audience matches our client ID
+            if data.get("aud") != settings.google_client_id:
+                logger.warning("Google token aud mismatch")
+                return None
+
+            return {
+                "sub": data["sub"],
+                "email": data["email"],
+                "name": data.get("name", ""),
+                "email_verified": data.get("email_verified", "false") == "true",
+            }
+    except httpx.HTTPError as e:
+        logger.error("Google token verification error: %s", e)
+        return None
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -155,12 +264,8 @@ async def get_current_user(
 ) -> str:
     """FastAPI dependency: Extract and validate access token from Authorization header.
 
-    Args:
-        token: Bearer token extracted from Authorization header
-        settings: Application settings for JWT verification
-
     Returns:
-        Username from token
+        User ID (sub claim) from token
 
     Raises:
         HTTPException: 401 if token is invalid, expired, or not an access token
@@ -178,33 +283,65 @@ async def get_current_user(
             algorithms=[settings.jwt_algorithm]
         )
 
-        username: str | None = payload.get("sub")
+        user_id: str | None = payload.get("sub")
         token_type: str | None = payload.get("type")
         jti = payload.get("jti")
 
-        if username is None or token_type != "access":
+        if user_id is None or token_type != "access":
             raise credentials_exception
 
         if jti and is_token_revoked(jti):
             raise credentials_exception
 
-        return username
+        return user_id
 
     except InvalidTokenError:
         raise credentials_exception
 
 
+async def get_current_admin_user(
+    user_id: Annotated[str, Depends(get_current_user)],
+) -> str:
+    """FastAPI dependency: Verify the current user has admin role.
+
+    Queries the database for the user's role. Returns 403 if not admin.
+
+    Returns:
+        User ID if user is admin
+
+    Raises:
+        HTTPException: 403 if user is not admin, 401 if user not found
+    """
+    from sqlalchemy import select
+
+    from nba_betting_agent.db.models import UserModel
+    from nba_betting_agent.db.session import AsyncSessionFactory
+
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
+    return user_id
+
+
 def verify_ws_token(token: str) -> str | None:
     """Verify a token from WebSocket query parameter.
 
-    Used for WebSocket authentication where standard dependency injection
-    is not available. Returns username or None on any error.
-
-    Args:
-        token: JWT token string
-
-    Returns:
-        Username if token is valid and is an access token, None otherwise
+    Returns user_id or None on any error.
     """
     try:
         settings = get_settings()
@@ -215,17 +352,17 @@ def verify_ws_token(token: str) -> str | None:
             algorithms=[settings.jwt_algorithm]
         )
 
-        username: str | None = payload.get("sub")
+        user_id: str | None = payload.get("sub")
         token_type: str | None = payload.get("type")
         jti = payload.get("jti")
 
-        if username is None or token_type != "access":
+        if user_id is None or token_type != "access":
             return None
 
         if jti and is_token_revoked(jti):
             return None
 
-        return username
+        return user_id
 
     except Exception:
         return None

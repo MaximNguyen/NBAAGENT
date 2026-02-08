@@ -2,25 +2,15 @@ import { useState, useEffect, useCallback, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: Record<string, unknown>) => void;
-          renderButton: (el: HTMLElement, config: Record<string, unknown>) => void;
-        };
-      };
-    };
-  }
-}
-
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
-export function LoginPage() {
-  const { login, loginWithGoogle, isLoading, error, clearError } = useAuth();
+export function RegisterPage() {
+  const { loginWithGoogle, isLoading, error, clearError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleGoogleCallback = useCallback(
     (response: { credential: string }) => {
@@ -40,13 +30,13 @@ export function LoginPage() {
         client_id: GOOGLE_CLIENT_ID,
         callback: handleGoogleCallback,
       });
-      const btnEl = document.getElementById("google-signin-btn");
+      const btnEl = document.getElementById("google-signup-btn");
       if (btnEl) {
         window.google?.accounts.id.renderButton(btnEl, {
           theme: "outline",
           size: "large",
           width: "100%",
-          text: "signin_with",
+          text: "signup_with",
         });
       }
     };
@@ -57,10 +47,59 @@ export function LoginPage() {
     };
   }, [handleGoogleCallback]);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    login(email, password);
+    setSubmitError(null);
+
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          display_name: displayName || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setSubmitError(body?.detail ?? `Registration failed (${res.status})`);
+        return;
+      }
+
+      setSubmitted(true);
+    } catch {
+      setSubmitError("Cannot reach server. Is the backend running?");
+    }
   };
+
+  if (submitted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="w-full max-w-sm">
+          <div className="rounded-xl border bg-white p-8 shadow-sm text-center">
+            <div className="mb-4 flex justify-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-green-600 text-xl">
+                &#10003;
+              </div>
+            </div>
+            <h2 className="text-lg font-semibold">Check your email</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              We sent a verification link to <strong>{email}</strong>. Click the
+              link to verify your account, then come back to sign in.
+            </p>
+            <Link
+              to="/login"
+              className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+            >
+              Go to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -71,18 +110,21 @@ export function LoginPage() {
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white text-lg font-bold">
               EV
             </div>
-            <h1 className="text-xl font-semibold">Sign In</h1>
+            <h1 className="text-xl font-semibold">Create Account</h1>
             <p className="text-sm text-muted-foreground">
-              Sign in to access the dashboard
+              Register to access the dashboard
             </p>
           </div>
 
           {/* Error */}
-          {error && (
+          {(submitError || error) && (
             <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
+              {submitError || error}
               <button
-                onClick={clearError}
+                onClick={() => {
+                  setSubmitError(null);
+                  clearError();
+                }}
                 className="ml-2 text-red-500 hover:text-red-700"
               >
                 x
@@ -90,10 +132,10 @@ export function LoginPage() {
             </div>
           )}
 
-          {/* Google Sign-In */}
+          {/* Google Sign-Up */}
           {GOOGLE_CLIENT_ID && (
             <>
-              <div id="google-signin-btn" className="mb-4 flex justify-center" />
+              <div id="google-signup-btn" className="mb-4 flex justify-center" />
               <div className="mb-4 flex items-center gap-3">
                 <div className="h-px flex-1 bg-gray-200" />
                 <span className="text-xs text-muted-foreground">or</span>
@@ -105,10 +147,21 @@ export function LoginPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="email"
-                className="mb-1 block text-sm font-medium"
-              >
+              <label htmlFor="displayName" className="mb-1 block text-sm font-medium">
+                Display Name (optional)
+              </label>
+              <input
+                id="displayName"
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="Your name"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="email" className="mb-1 block text-sm font-medium">
                 Email
               </label>
               <input
@@ -117,7 +170,6 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
-                autoFocus
                 required
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 placeholder="you@example.com"
@@ -125,10 +177,7 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="mb-1 block text-sm font-medium"
-              >
+              <label htmlFor="password" className="mb-1 block text-sm font-medium">
                 Password
               </label>
               <input
@@ -136,26 +185,27 @@ export function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
+                minLength={8}
                 className="w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                placeholder="Enter password"
+                placeholder="Min 8 characters"
               />
             </div>
 
             <button
               type="submit"
-              disabled={isLoading || !email || !password}
+              disabled={isLoading || !email || !password || password.length < 8}
               className="w-full rounded-md bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
             >
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? "Creating account..." : "Create Account"}
             </button>
           </form>
 
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <Link to="/register" className="text-primary hover:underline">
-              Register
+            Already have an account?{" "}
+            <Link to="/login" className="text-primary hover:underline">
+              Sign in
             </Link>
           </p>
         </div>

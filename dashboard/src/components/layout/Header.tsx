@@ -4,7 +4,9 @@ import { useAuth } from "@/auth/AuthContext";
 
 export function Header() {
   const { data: health } = useHealth();
-  const { username, logout } = useAuth();
+  const { user, logout } = useAuth();
+
+  const displayLabel = user?.display_name || user?.email || "User";
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-white px-6">
@@ -26,7 +28,7 @@ export function Header() {
           </div>
         )}
         <div className="flex items-center gap-3 border-l pl-4">
-          <span className="text-sm text-muted-foreground">{username}</span>
+          <span className="text-sm text-muted-foreground">{displayLabel}</span>
           <button
             onClick={logout}
             className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-gray-100 hover:text-gray-900"

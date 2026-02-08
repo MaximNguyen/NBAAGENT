@@ -11,7 +11,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from nba_betting_agent import __version__
-from nba_betting_agent.api.auth import get_current_user
+from nba_betting_agent.api.auth import get_current_admin_user, get_current_user
 from nba_betting_agent.api.config import get_settings
 from nba_betting_agent.api.middleware import (
     RequestLoggingMiddleware,
@@ -67,7 +67,7 @@ def create_app() -> FastAPI:
             "https://www.sportagent.lol",
         ],
         allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
     )
 
@@ -98,6 +98,15 @@ def create_app() -> FastAPI:
             prefix="/api",
             dependencies=[Depends(get_current_user)],
         )
+
+    # Admin routes (require admin role - checked in each endpoint via get_current_admin_user)
+    from nba_betting_agent.api.routers import admin
+
+    app.include_router(
+        admin.router,
+        prefix="/api",
+        dependencies=[Depends(get_current_user)],
+    )
 
     # WebSocket handles its own token validation via query param
     app.include_router(ws.router)
