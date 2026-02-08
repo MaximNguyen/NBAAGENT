@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from nba_betting_agent.api.auth import (
     create_access_token,
     create_refresh_token,
+    oauth2_scheme,
+    revoke_token,
     verify_password,
 )
 from nba_betting_agent.api.config import Settings, get_settings
@@ -112,5 +114,56 @@ async def refresh(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+@router.post("/auth/logout")
+@limiter.limit("30/minute")
+async def logout(
+    request: Request,
+    token: Annotated[str, Depends(oauth2_scheme)],
+    settings: Annotated[Settings, Depends(get_settings)]
+):
+    """Logout by revoking the current access token.
+
+    Args:
+        request: FastAPI request object (required for rate limiting)
+        token: Bearer token from Authorization header
+        settings: Application settings for JWT verification
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: 401 if token is invalid or missing jti claim
+    """
+    try:
+        # Decode token to extract jti and exp
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm]
+        )
+
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+
+        if not jti or not exp:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing jti or exp claim",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Add token to blacklist
+        revoke_token(jti, exp)
+
+        return {"message": "Successfully logged out"}
+
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )

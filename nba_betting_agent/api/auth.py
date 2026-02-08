@@ -6,6 +6,8 @@ Supports access tokens (short-lived) and refresh tokens (long-lived).
 
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+import time
+import uuid
 
 import jwt
 from jwt.exceptions import InvalidTokenError
@@ -20,6 +22,48 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 # Password hashing context with bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+
+# Token blacklist for logout support (RATE-05)
+# Format: {jti: expiry_timestamp} — cleaned up on each revoke call
+_revoked_tokens: dict[str, float] = {}
+
+
+def _cleanup_expired_tokens():
+    """Remove expired tokens from blacklist to prevent unbounded growth."""
+    global _revoked_tokens
+    current_time = time.time()
+    _revoked_tokens = {jti: exp for jti, exp in _revoked_tokens.items() if exp > current_time}
+
+
+def revoke_token(jti: str, exp: int):
+    """Add a token to the blacklist.
+
+    Args:
+        jti: Token identifier (jti claim)
+        exp: Token expiry timestamp (exp claim)
+    """
+    _cleanup_expired_tokens()
+    _revoked_tokens[jti] = float(exp)
+
+
+def is_token_revoked(jti: str) -> bool:
+    """Check if a token has been revoked.
+
+    Args:
+        jti: Token identifier (jti claim)
+
+    Returns:
+        True if token is revoked and not yet expired, False otherwise
+    """
+    if jti not in _revoked_tokens:
+        return False
+
+    # Check if token expired naturally
+    if _revoked_tokens[jti] < time.time():
+        del _revoked_tokens[jti]
+        return False
+
+    return True
 
 
 def create_access_token(username: str, settings: Settings) -> str:
@@ -39,7 +83,8 @@ def create_access_token(username: str, settings: Settings) -> str:
         "sub": username,
         "exp": expire,
         "iat": now,
-        "type": "access"
+        "type": "access",
+        "jti": uuid.uuid4().hex
     }
 
     return jwt.encode(
@@ -66,7 +111,8 @@ def create_refresh_token(username: str, settings: Settings) -> str:
         "sub": username,
         "exp": expire,
         "iat": now,
-        "type": "refresh"
+        "type": "refresh",
+        "jti": uuid.uuid4().hex
     }
 
     return jwt.encode(
@@ -134,8 +180,12 @@ async def get_current_user(
 
         username: str | None = payload.get("sub")
         token_type: str | None = payload.get("type")
+        jti = payload.get("jti")
 
         if username is None or token_type != "access":
+            raise credentials_exception
+
+        if jti and is_token_revoked(jti):
             raise credentials_exception
 
         return username
@@ -167,8 +217,12 @@ def verify_ws_token(token: str) -> str | None:
 
         username: str | None = payload.get("sub")
         token_type: str | None = payload.get("type")
+        jti = payload.get("jti")
 
         if username is None or token_type != "access":
+            return None
+
+        if jti and is_token_revoked(jti):
             return None
 
         return username
