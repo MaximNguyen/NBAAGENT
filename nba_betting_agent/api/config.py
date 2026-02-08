@@ -41,6 +41,26 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = Field(default=7, ge=1, le=30)
     environment: str = Field(default="development")
 
+    # Database pool configuration
+    db_pool_size: int = Field(
+        default=10,
+        ge=5,
+        le=50,
+        description="SQLAlchemy connection pool size"
+    )
+    db_max_overflow: int = Field(
+        default=20,
+        ge=0,
+        le=100,
+        description="Max overflow connections beyond pool_size"
+    )
+    db_pool_recycle: int = Field(
+        default=3600,
+        ge=300,
+        le=86400,
+        description="Seconds before recycling a connection"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

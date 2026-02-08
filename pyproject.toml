@@ -47,6 +47,7 @@ api = [
     "passlib[bcrypt]>=1.7.4",
     "pydantic-settings>=2.0.0",
     "slowapi>=0.1.9",
+    "asyncpg>=0.29.0",
 ]
 
 [project.scripts]
