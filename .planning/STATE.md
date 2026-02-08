@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Find genuine edges in NBA betting markets by comparing AI-generated probability estimates against sportsbook odds — security hardening protects this system and its users.
-**Current focus:** Phase 4 - Database & WebSocket Hardening (Phase 3 complete)
+**Current focus:** Phase 5 - Deployment & Supply Chain Security (Phase 4 complete)
 
 ## Current Position
 
-Phase: 4 of 5 (Database & WebSocket Hardening)
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-08 — Completed 04-02-PLAN.md (WebSocket Security & Database Constraints)
+Phase: 5 of 5 (Deployment & Supply Chain Security)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-08 — Completed 05-01-PLAN.md (Docker Hardening)
 
-Progress: [████████████████████████] 100% of Phase 4 (2/2 plans complete)
+Progress: [████████████░░░░░░░░░░░░] 50% of Phase 5 (1/2 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 2.6 min
-- Total execution time: 0.35 hours
+- Total plans completed: 9
+- Average duration: 2.4 min
+- Total execution time: 0.37 hours
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Progress: [███████████████████████
 | 02 | 2/2 | 5 min | 2.5 min |
 | 03 | 2/2 | 7 min | 3.5 min |
 | 04 | 2/2 | 3 min | 1.5 min |
+| 05 | 1/2 | 2 min | 2.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 3min, 1min, 2min
-- Trend: Consistent pace, Phase 4 highly optimized
+- Last 5 plans: 3min, 1min, 2min, 2min
+- Trend: Highly optimized execution, consistent 2-3min per plan
 
 *Updated after each plan completion*
 
@@ -78,6 +79,10 @@ Recent decisions affecting current work:
 - **[04-02]** WebSocket authentication via Sec-WebSocket-Protocol header (format: jwt.token.<jwt>) instead of query parameters
 - **[04-02]** Server echoes subprotocol on WebSocket accept per WebSocket spec requirement
 - **[04-02]** Composite unique constraint (game_id, bookmaker, market, outcome, timestamp) matches repository upsert index_elements
+- **[05-01]** Run container as appuser (not root) to prevent privilege escalation attacks
+- **[05-01]** HEALTHCHECK uses Python urllib (not curl/wget) to avoid additional dependencies in slim image
+- **[05-01]** Health check interval 30s with 10s start-period prevents restart loops during initialization
+- **[05-01]** Frontend assets owned by appuser via --chown on COPY instruction
 
 ### Pending Todos
 
@@ -110,11 +115,16 @@ None yet.
 - Database constraints: Composite unique constraint on historical_odds matches PostgreSQL upsert operations
 - Alembic migration ready for production deployment
 
+**Phase 5 In Progress:**
+- Docker container hardened: non-root appuser, HEALTHCHECK monitoring /api/health
+- Container runs as appuser (not root), reducing attack surface if compromised
+- Health monitoring enables Railway automatic restart on failures
+
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed Plan 04-02 (WebSocket Security & Database Constraints) — Phase 4 complete
-Resume file: .planning/phases/05-*/ (next phase)
+Stopped at: Completed Plan 05-01 (Docker Hardening) — Phase 5 in progress (1/2 plans)
+Resume file: .planning/phases/05-deployment-supply-chain/05-02-PLAN.md
 
 ---
 *State initialized: 2026-02-07*
