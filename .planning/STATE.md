@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-07)
 ## Current Position
 
 Phase: 3 of 5 (Rate Limiting & Concurrency Safety)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-08 — Completed 03-01-PLAN.md (Rate Limiting Implementation)
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-08 — Completed 03-02-PLAN.md (Token Invalidation, Thread Safety, WebSocket Limits)
 
-Progress: [██████████░░░░░░░░░░] 50% of Phase 3 (1/2 plans complete)
+Progress: [████████████████████] 100% of Phase 3 (2/2 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 3.0 min
-- Total execution time: 0.26 hours
+- Total execution time: 0.31 hours
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [██████████░░░░░░░░░░] 50% of 
 |-------|-------|-------|----------|
 | 01 | 2/2 | 7 min | 3.5 min |
 | 02 | 2/2 | 5 min | 2.5 min |
-| 03 | 1/2 | 4 min | 4.0 min |
+| 03 | 2/2 | 7 min | 3.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 2min, 3min, 4min
+- Last 5 plans: 2min, 3min, 4min, 3min
 - Trend: Consistent pace, stable execution
 
 *Updated after each plan completion*
@@ -64,6 +64,11 @@ Recent decisions affecting current work:
 - **[03-01]** IP-based rate limiting (not user-based) appropriate for single-user system
 - **[03-01]** Tiered rate limits: 5/15min login, 10/min write, 100/min read, 30/min refresh (security vs usability balance)
 - **[03-01]** SlowAPI chosen over custom middleware (RFC compliance, Retry-After headers, storage backends)
+- **[03-02]** jti claims in both access and refresh tokens enable per-token revocation
+- **[03-02]** In-memory blacklist suitable for single-instance deployment (expires naturally with tokens)
+- **[03-02]** Token blacklist cleanup on each revoke call prevents unbounded growth
+- **[03-02]** threading.Lock correct for AnalysisStore (not asyncio.Lock) because WebSocket analysis runs in ThreadPoolExecutor
+- **[03-02]** ConnectionManager enforces 2 concurrent WebSocket connections per user, rejecting excess with close code 4003
 
 ### Pending Todos
 
@@ -80,19 +85,21 @@ None yet.
 - bcrypt/passlib compatibility: passlib 1.7.4 logs warning with bcrypt 4.x but works correctly. May need upgrade to newer passlib or direct bcrypt usage in future.
 
 **Future Phase Research:**
-- Phase 3: Railway Redis addon setup (pricing, configuration for distributed rate limiting - Plan 03-02)
 - Phase 4: WebSocket Sec-WebSocket-Protocol browser compatibility (Safari/Firefox testing needed)
 
-**Phase 3 Notes:**
-- Basic IP-based rate limiting complete (in-memory, single-instance)
-- Current implementation suitable for single Railway instance
-- Plan 03-02 will add Redis backend for multi-instance deployments
+**Phase 3 Complete:**
+- IP-based rate limiting with SlowAPI middleware
+- JWT token invalidation with jti claims and in-memory blacklist
+- Thread-safe AnalysisStore with atomic update methods
+- WebSocket connection limits (2 per user, close code 4003 on excess)
+- Current implementation suitable for single Railway instance (in-memory storage)
+- If scaling to multiple instances, consider Redis backend for shared state (future optimization)
 
 ## Session Continuity
 
 Last session: 2026-02-08
-Stopped at: Completed Plan 03-01 (Rate Limiting Implementation)
-Resume file: .planning/phases/03-rate-limiting-concurrency/03-02-PLAN.md (next)
+Stopped at: Completed Plan 03-02 (Token Invalidation, Thread Safety, WebSocket Limits) — Phase 3 complete
+Resume file: .planning/phases/04-security-hardening/ (next phase)
 
 ---
 *State initialized: 2026-02-07*
