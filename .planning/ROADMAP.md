@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Authentication & Configuration Foundation** - Replace custom JWT/passwords with PyJWT/bcrypt, move secrets to environment ✓ 2026-02-07
 - [x] **Phase 2: Protocol & Transport Security** - Add security headers, HTTPS enforcement, CORS tightening, request logging ✓ 2026-02-07
-- [ ] **Phase 3: Rate Limiting & Concurrency Safety** - Implement rate limiting, fix thread-unsafe global state
+- [x] **Phase 3: Rate Limiting & Concurrency Safety** - Implement rate limiting, fix thread-unsafe global state ✓ 2026-02-08
 - [ ] **Phase 4: Database & WebSocket Hardening** - Configure connection pooling, SSL, secure WebSocket auth pattern
 - [ ] **Phase 5: Deployment & Supply Chain Security** - Non-root container, health checks, dependency scanning
 
@@ -65,8 +65,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Rate limiting: SlowAPI setup, login 5/15min, per-endpoint API limits
-- [ ] 03-02-PLAN.md — Token blacklist/logout, AnalysisStore lock coverage, WebSocket connection limits
+- [x] 03-01-PLAN.md — Rate limiting: SlowAPI setup, login 5/15min, per-endpoint API limits ✓
+- [x] 03-02-PLAN.md — Token blacklist/logout, AnalysisStore lock coverage, WebSocket connection limits ✓
 
 ### Phase 4: Database & WebSocket Hardening
 **Goal**: Data layer and persistent connections are secure and properly configured
@@ -78,10 +78,11 @@ Plans:
   3. SQL parameters do not appear in application logs
   4. WebSocket authentication uses Sec-WebSocket-Protocol header instead of query parameter (token not visible in logs)
   5. HistoricalOddsModel upsert operations work correctly without unique constraint violations
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: [TBD during planning]
+- [ ] 04-01-PLAN.md — Database engine hardening: pool limits, production SSL, hidden parameters
+- [ ] 04-02-PLAN.md — WebSocket Sec-WebSocket-Protocol auth, HistoricalOddsModel unique constraint
 
 ### Phase 5: Deployment & Supply Chain Security
 **Goal**: Application runs securely in production with monitored dependencies
@@ -108,10 +109,10 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Authentication & Config | 2/2 | ✓ Complete | 2026-02-07 |
 | 2. Protocol & Transport | 2/2 | ✓ Complete | 2026-02-07 |
-| 3. Rate Limiting & Concurrency | 0/2 | In progress | - |
+| 3. Rate Limiting & Concurrency | 2/2 | ✓ Complete | 2026-02-08 |
 | 4. Database & WebSocket | 0/TBD | Not started | - |
 | 5. Deployment & Supply Chain | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-02-07*
-*Last updated: 2026-02-07 after Phase 2 completion*
+*Last updated: 2026-02-08 after Phase 3 completion*
