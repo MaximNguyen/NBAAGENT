@@ -5,10 +5,12 @@ Supports both SQLite (development) and PostgreSQL (production) via environment c
 """
 
 import os
+import ssl
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -42,12 +44,76 @@ def get_database_url() -> str:
     return "sqlite+aiosqlite:///./nba_betting.db"
 
 
-# Create async engine with connection verification
-engine = create_async_engine(
-    get_database_url(),
-    pool_pre_ping=True,  # Verify connections before using
-    echo=False,  # Quiet by default, set echo=True for SQL debugging
-)
+def create_engine() -> AsyncEngine:
+    """Create async engine with hardened configuration.
+
+    Applies connection pool limits, SSL for production PostgreSQL,
+    and log parameter hiding to prevent resource exhaustion and
+    credential leakage.
+
+    Settings are loaded for pool configuration when available (API server).
+    Falls back to defaults when Settings unavailable (CLI, migrations).
+
+    Returns:
+        Configured async engine with pool limits, SSL, and hidden parameters
+
+    Pool Configuration:
+        - pool_pre_ping=True: Verify connections before using
+        - pool_recycle=3600: Recycle connections after 1 hour
+        - hide_parameters=True: Hide SQL parameters from logs
+        - echo=False: Disable SQL echo in production
+
+    PostgreSQL Production:
+        - pool_size: Configurable via DB_POOL_SIZE (default 10)
+        - max_overflow: Configurable via DB_MAX_OVERFLOW (default 20)
+        - SSL: CERT_REQUIRED with hostname verification when environment=production
+
+    SQLite Development:
+        - No pool_size/max_overflow (not supported)
+        - No SSL (local file database)
+    """
+    db_url = get_database_url()
+    is_postgres = db_url.startswith("postgresql")
+
+    # Base engine kwargs (always applied)
+    engine_kwargs: dict[str, Any] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 3600,
+        "hide_parameters": True,
+        "echo": False,
+    }
+
+    # Add PostgreSQL-specific configuration
+    if is_postgres:
+        # Try to load Settings for pool configuration
+        # Falls back to defaults if Settings unavailable (CLI/migrations context)
+        try:
+            from nba_betting_agent.api.config import get_settings
+            settings = get_settings()
+            pool_size = settings.db_pool_size
+            max_overflow = settings.db_max_overflow
+            environment = settings.environment
+        except Exception:
+            # Settings unavailable - use defaults
+            pool_size = 10
+            max_overflow = 20
+            environment = "development"
+
+        engine_kwargs["pool_size"] = pool_size
+        engine_kwargs["max_overflow"] = max_overflow
+
+        # Add SSL for production PostgreSQL
+        if environment == "production":
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = True
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+            engine_kwargs["connect_args"] = {"ssl": ssl_context}
+
+    return create_async_engine(db_url, **engine_kwargs)
+
+
+# Create async engine with hardened configuration
+engine = create_engine()
 
 # Create async session factory
 AsyncSessionFactory = async_sessionmaker(
