@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Authentication & Configuration Foundation** - Replace custom JWT/passwords with PyJWT/bcrypt, move secrets to environment ✓ 2026-02-07
 - [x] **Phase 2: Protocol & Transport Security** - Add security headers, HTTPS enforcement, CORS tightening, request logging ✓ 2026-02-07
 - [x] **Phase 3: Rate Limiting & Concurrency Safety** - Implement rate limiting, fix thread-unsafe global state ✓ 2026-02-08
-- [ ] **Phase 4: Database & WebSocket Hardening** - Configure connection pooling, SSL, secure WebSocket auth pattern
+- [x] **Phase 4: Database & WebSocket Hardening** - Configure connection pooling, SSL, secure WebSocket auth pattern ✓ 2026-02-08
 - [ ] **Phase 5: Deployment & Supply Chain Security** - Non-root container, health checks, dependency scanning
 
 ## Phase Details
@@ -81,8 +81,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Database engine hardening: pool limits, production SSL, hidden parameters
-- [ ] 04-02-PLAN.md — WebSocket Sec-WebSocket-Protocol auth, HistoricalOddsModel unique constraint
+- [x] 04-01-PLAN.md — Database engine hardening: pool limits, production SSL, hidden parameters ✓
+- [x] 04-02-PLAN.md — WebSocket Sec-WebSocket-Protocol auth, HistoricalOddsModel unique constraint ✓
 
 ### Phase 5: Deployment & Supply Chain Security
 **Goal**: Application runs securely in production with monitored dependencies
@@ -95,10 +95,11 @@ Plans:
   4. CI/CD pipeline fails build if pip-audit detects known vulnerabilities in dependencies
   5. Dependabot creates automated PRs for security updates
   6. Dependencies are locked in requirements.lock or poetry.lock file
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: [TBD during planning]
+- [ ] 05-01-PLAN.md — Docker hardening: non-root appuser, HEALTHCHECK instruction
+- [ ] 05-02-PLAN.md — Supply chain: pip-audit CI/CD, Dependabot config, requirements.lock
 
 ## Progress
 
@@ -110,9 +111,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Authentication & Config | 2/2 | ✓ Complete | 2026-02-07 |
 | 2. Protocol & Transport | 2/2 | ✓ Complete | 2026-02-07 |
 | 3. Rate Limiting & Concurrency | 2/2 | ✓ Complete | 2026-02-08 |
-| 4. Database & WebSocket | 0/TBD | Not started | - |
-| 5. Deployment & Supply Chain | 0/TBD | Not started | - |
+| 4. Database & WebSocket | 2/2 | ✓ Complete | 2026-02-08 |
+| 5. Deployment & Supply Chain | 0/2 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-07*
-*Last updated: 2026-02-08 after Phase 3 completion*
+*Last updated: 2026-02-08 after Phase 4 completion*
