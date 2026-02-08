@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-07)
 
 **Core value:** Find genuine edges in NBA betting markets by comparing AI-generated probability estimates against sportsbook odds — security hardening protects this system and its users.
-**Current focus:** Phase 2 - Protocol & Transport Security
+**Current focus:** Phase 3 - Rate Limiting & Concurrency Safety
 
 ## Current Position
 
-Phase: 2 of 5 (Protocol & Transport Security)
-Plan: 2 of 2 in current phase
-Status: Phase complete
-Last activity: 2026-02-07 — Completed 02-02-PLAN.md (Input Validation)
+Phase: 3 of 5 (Rate Limiting & Concurrency Safety)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-08 — Completed 03-01-PLAN.md (Rate Limiting Implementation)
 
-Progress: [████████████████████] 100% of Phase 2 (2/2 plans complete)
+Progress: [██████████░░░░░░░░░░] 50% of Phase 3 (1/2 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 3.0 min
-- Total execution time: 0.20 hours
+- Total execution time: 0.26 hours
 
 **By Phase:**
 
@@ -29,10 +29,11 @@ Progress: [████████████████████] 100% of
 |-------|-------|-------|----------|
 | 01 | 2/2 | 7 min | 3.5 min |
 | 02 | 2/2 | 5 min | 2.5 min |
+| 03 | 1/2 | 4 min | 4.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 4min, 2min, 3min
-- Trend: Steady pace, efficient execution
+- Last 5 plans: 4min, 2min, 3min, 4min
+- Trend: Consistent pace, stable execution
 
 *Updated after each plan completion*
 
@@ -60,6 +61,9 @@ Recent decisions affecting current work:
 - **[02-02]** EV thresholds constrained to -1.0 to 1.0 range (prevents invalid filter values)
 - **[02-02]** Limit parameter capped at 100 results (prevents resource exhaustion)
 - **[02-02]** String parameters have max_length constraints: team=10, market=50, sort_by=50, confidence=20, season=10, game_id=100, run_id=100
+- **[03-01]** IP-based rate limiting (not user-based) appropriate for single-user system
+- **[03-01]** Tiered rate limits: 5/15min login, 10/min write, 100/min read, 30/min refresh (security vs usability balance)
+- **[03-01]** SlowAPI chosen over custom middleware (RFC compliance, Retry-After headers, storage backends)
 
 ### Pending Todos
 
@@ -76,15 +80,19 @@ None yet.
 - bcrypt/passlib compatibility: passlib 1.7.4 logs warning with bcrypt 4.x but works correctly. May need upgrade to newer passlib or direct bcrypt usage in future.
 
 **Future Phase Research:**
-- Phase 2: Rate limiting implementation ready (auth foundation complete)
-- Phase 3: Railway Redis addon setup (pricing, configuration for distributed rate limiting)
+- Phase 3: Railway Redis addon setup (pricing, configuration for distributed rate limiting - Plan 03-02)
 - Phase 4: WebSocket Sec-WebSocket-Protocol browser compatibility (Safari/Firefox testing needed)
+
+**Phase 3 Notes:**
+- Basic IP-based rate limiting complete (in-memory, single-instance)
+- Current implementation suitable for single Railway instance
+- Plan 03-02 will add Redis backend for multi-instance deployments
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Completed Plan 02-02 (Input Validation) - Phase 2 complete
-Resume file: Phase 3 planning (Database Layer Security)
+Last session: 2026-02-08
+Stopped at: Completed Plan 03-01 (Rate Limiting Implementation)
+Resume file: .planning/phases/03-rate-limiting-concurrency/03-02-PLAN.md (next)
 
 ---
 *State initialized: 2026-02-07*
