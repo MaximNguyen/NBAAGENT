@@ -7,7 +7,7 @@ Includes converter functions to transform between models and frozen dataclasses.
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Index, Boolean, DateTime, Float, Integer, String
+from sqlalchemy import Index, UniqueConstraint, Boolean, DateTime, Float, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 if TYPE_CHECKING:
@@ -78,6 +78,10 @@ class HistoricalOddsModel(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
     __table_args__ = (
+        UniqueConstraint(
+            "game_id", "bookmaker", "market", "outcome", "timestamp",
+            name="uq_odds_snapshot"
+        ),
         Index("ix_historical_odds_game_timestamp", "game_id", "timestamp"),
         Index("ix_historical_odds_date_bookmaker", "game_date", "bookmaker"),
         Index("ix_historical_odds_market_outcome_date", "market", "outcome", "game_date"),
